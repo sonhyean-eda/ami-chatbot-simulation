@@ -1,2 +1,2 @@
-# ami-chatbot-simulation
-AMI chatbot virtual patient simulation for nursing education 
+# AMI Chatbot Simulation
+Streamlit-based chatbot virtual patient simulation for nursing education.
