@@ -233,45 +233,73 @@ def naturalize_with_openai(user_input: str, clinical_fact: str, tone: str = "불
 def classify_input(user_text: str) -> str:
     text = user_text.lower().strip()
 
+    # ------------------------------------------------------------
+    # 0. 노티/SBAR 상세 보고 우선 판정
+    # - "보고/노티/SBAR" 같은 행동 표현이 있어야만 report_detail
+    # - 심전도, 혈액검사 같은 단어만 있다고 report_detail로 가지 않음
+    # ------------------------------------------------------------
+    report_action_keywords = [
+        "보고", "보고드립니다", "보고 드립니다",
+        "노티", "노티드립니다", "노티 드립니다",
+        "sbar",
+        "처방 부탁", "처방 부탁드립니다", "처방 요청",
+        "의사에게 보고", "의사에게 노티",
+        "의사선생님께 보고", "의사선생님께 노티"
+    ]
+
+    report_content_keywords = [
+        "김심근 환자",
+        "응급실 1번 침상",
+        "30분 전 시작", "30분 전부터", "30분 전",
+        "압박성 흉통", "흉통", "가슴 통증",
+        "nrs 8점", "통증 8점",
+        "고혈압 약 복용", "고혈압",
+        "흡연력", "담배",
+        "가족력",
+        "심전도", "ekg", "ecg",
+        "혈액검사", "피검사", "lab",
+        "트로포닌", "troponin",
+        "ck-mb", "ckmb",
+        "급성심근경색", "stemi", "st 분절 상승", "st-segment elevation"
+    ]
+
+    has_report_action = any(k in text for k in report_action_keywords)
+    has_report_content = any(k in text for k in report_content_keywords)
+
+    if has_report_action and has_report_content:
+        return "report_detail"
+
+    # ------------------------------------------------------------
+    # 1. 가족력
+    # ------------------------------------------------------------
     family_history_keywords = [
         "가족력이", "가족력이 있으신가요", "가족력",
-        "가족 중", "가족", "아버지", "어머니", "심장질환 가족력"
+        "가족 중", "심장질환 가족력", "아버지", "어머니"
     ]
     if any(k in text for k in family_history_keywords):
         return "family_history"
 
+    # ------------------------------------------------------------
+    # 2. 단순 보고 예고
+    # ------------------------------------------------------------
     simple_report_keywords = [
         "보고하도록 하겠습니다",
         "노티하도록 하겠습니다",
-        "의사선생님께 보고",
-        "의사선생님께 노티",
-        "의사에게 노티",
-        "의사에게 보고",
+        "의사에게 보고하겠습니다",
+        "의사에게 노티하겠습니다",
+        "의사선생님께 보고하겠습니다",
+        "의사선생님께 노티하겠습니다",
         "보고하겠습니다",
-        "노티하겠습니다"
+        "노티하겠습니다",
+        "지금 보고하겠습니다",
+        "지금 노티하겠습니다"
     ]
     if any(k in text for k in simple_report_keywords):
         return "report_intro"
 
-    sbar_detail_keywords = [
-        "노티 드립니다",
-        "노티드립니다",
-        "보고 드립니다",
-        "보고드립니다",
-        "처방 부탁드립니다",
-        "응급실 1번 침상",
-        "김심근 환자",
-        "30분 전 시작",
-        "nrs 8점",
-        "압박성 흉통",
-        "고혈압 약 복용",
-        "흡연력",    
-        "stemi",
-        "sbar"
-    ]
-    if any(k in text for k in sbar_detail_keywords):
-        return "report_detail"
-
+    # ------------------------------------------------------------
+    # 3. 처방 기반 중재
+    # ------------------------------------------------------------
     intervention_keywords = [
         "산소를", "산소 연결", "산소 투여", "o2",
         "ntg", "니트로", "니트로글리세린",
@@ -281,6 +309,9 @@ def classify_input(user_text: str) -> str:
     if any(k in text for k in intervention_keywords):
         return "intervention"
 
+    # ------------------------------------------------------------
+    # 4. 중재 후 재사정
+    # ------------------------------------------------------------
     reassess_keywords = [
         "통증은 지금", "지금 통증", "통증은 어느 정도", "통증은", "몇 점 정도",
         "숨쉬기는", "숨은", "호흡은", "호흡은 어떠세요", "숨쉬기는 좀 어떠세요",
@@ -290,49 +321,89 @@ def classify_input(user_text: str) -> str:
     if st.session_state.intervention_done and any(k in text for k in reassess_keywords):
         return "reassessment"
 
+    # ------------------------------------------------------------
+    # 5. 중재 후 치료적 마무리
+    # ------------------------------------------------------------
     closing_keywords = [
         "계속 상태를 관찰",
-        "계속 증상을 관찰",
         "다시 통증이 심해지거나",
         "통증이 지속되면",
         "답답해지면",
         "답답해지면 바로 말씀",
         "바로 말씀해 주세요",
-        "바로 알려주세요",
         "계속 관찰할 것",
+        "계속 관찰할게요",
         "말씀해주세요",
         "알려주세요"
     ]
     if st.session_state.intervention_done and any(k in text for k in closing_keywords):
         return "closing_therapeutic"
 
-    interpretation_keywords = ["혈압이 높", "맥박이 높", "혈압과 맥박이 높"]
-    if any(k in text for k in interpretation_keywords) and st.session_state.vitals_shown:
+    # ------------------------------------------------------------
+    # 6. 활력징후 해석
+    # ------------------------------------------------------------
+    interpretation_keywords = [
+        "혈압이 높", "맥박이 높", "혈압과 맥박이 높"
+    ]
+    if st.session_state.vitals_shown and any(k in text for k in interpretation_keywords):
         return "vitals_interpretation"
 
-    vitals_keywords = ["활력징후", "바이탈", "v/s", "혈압", "맥박", "호흡수", "산소포화도", "spo2", "체온"]
-    if any(k in text for k in vitals_keywords):
-        return "vitals"
-
-    exam_keywords = ["검사", "심전도", "ekg", "ecg", "피검사", "혈액검사", "lab", "결과"]
+    # ------------------------------------------------------------
+    # 7. 검사 시행 / 결과 확인
+    # ------------------------------------------------------------
+    exam_keywords = [
+        "검사", "검사결과", "결과", "결과 확인", "결과 볼게요", "결과 보겠습니다", "결과 다시 보여",
+        "심전도", "ekg", "ecg", "12유도", "12-lead",
+        "혈액검사", "피검사", "채혈", "lab",
+        "트로포닌", "troponin",
+        "ck-mb", "ckmb"
+    ]
     if any(k in text for k in exam_keywords):
         return "labs"
 
-    history_keywords = ["기저질환", "질환", "평소", "약", "복용", "담배", "흡연", "알레르기", "병력"]
+    # ------------------------------------------------------------
+    # 8. 활력징후 확인
+    # ------------------------------------------------------------
+    vitals_keywords = [
+        "활력징후", "바이탈", "v/s",
+        "혈압", "맥박", "호흡수", "산소포화도", "spo2", "체온"
+    ]
+    if any(k in text for k in vitals_keywords):
+        return "vitals"
+
+    # ------------------------------------------------------------
+    # 9. 병력 및 위험요인 사정
+    # ------------------------------------------------------------
+    history_keywords = [
+        "기저질환", "질환", "평소", "약", "복용",
+        "담배", "흡연", "알레르기", "병력"
+    ]
     if any(k in text for k in history_keywords):
         return "history"
 
+    # ------------------------------------------------------------
+    # 10. 통증 및 증상 사정
+    # ------------------------------------------------------------
     pain_keywords = [
-        "어디", "어떻게", "언제", "통증", "퍼지", "숨이", "메스꺼움",
-        "아프", "다른 곳", "다른 아픈곳", "다른 아픈 곳", "다른 증상"
+        "어디", "어떻게", "언제", "통증", "퍼지", "방사",
+        "숨이", "메스꺼움", "아프", "답답",
+        "다른 곳", "다른 아픈곳", "다른 아픈 곳", "다른 증상"
     ]
     if any(k in text for k in pain_keywords):
         return "pain_assessment"
 
-    therapeutic_keywords = ["괜찮", "도와드리", "걱정하지", "불안", "안심", "옆에", "지금 바로"]
+    # ------------------------------------------------------------
+    # 11. 치료적 의사소통
+    # ------------------------------------------------------------
+    therapeutic_keywords = [
+        "괜찮", "도와드리", "걱정하지", "불안", "안심", "옆에", "지금 바로", "무섭"
+    ]
     if any(k in text for k in therapeutic_keywords):
         return "therapeutic"
 
+    # ------------------------------------------------------------
+    # 12. 그 외
+    # ------------------------------------------------------------
     return "general"
 
 # ------------------------------------------------------------
@@ -404,24 +475,24 @@ def get_response(user_text: str):
         responses.append(naturalize_with_openai(user_text, fact, tone="불안하지만 질문에는 답하는 상태"))
 
     elif category == "labs":
-        if st.session_state.intervention_done:
-            responses.append("지금은 조금 숨이 편해졌어요... 그래도 아직 무섭긴 해요...")
-        else:
-            st.session_state.labs_shown = True
-            st.session_state.checklist["검사 시행 또는 결과 확인"] = True
+        st.session_state.labs_shown = True
+        st.session_state.checklist["검사 시행 또는 결과 확인"] = True
 
-            responses.append("네, 빨리 좀 해주세요.. 너무 무서워요.")
-            responses.append(
-                "[SYSTEM: EKG 결과]\n"
-                f"- {LAB_RESULTS['ECG']}\n\n"
-                "[SYSTEM: Lab 결과]\n"
-                f"- Troponin I: {LAB_RESULTS['Troponin I']}\n"
-                f"- CK-MB: {LAB_RESULTS['CK-MB']}"
-            )
+        responses.append("네, 빨리 좀 해주세요.. 너무 무서워요.")
+        responses.append(
+            "[SYSTEM: EKG 결과]\n"
+            f"- {LAB_RESULTS['ECG']}\n\n"
+            "[SYSTEM: Lab 결과]\n"
+            f"- Troponin I: {LAB_RESULTS['Troponin I']}\n"
+            f"- CK-MB: {LAB_RESULTS['CK-MB']}"
+        )
+
+        if st.session_state.intervention_done:
+            responses.append("아까보다는 조금 나아졌는데... 검사 결과는 많이 안 좋은 건가요?")
 
     elif category == "report_intro":
         st.session_state.checklist["SBAR 보고 수행"] = True
-        responses.append("네.")
+        responses.append("네, 의사에게 바로 보고해주세요.")
 
     elif category == "report_detail":
         st.session_state.order_shown = True
@@ -434,7 +505,6 @@ def get_response(user_text: str):
             "3. Aspirin 300mg PO\n"
             "4. 12-lead EKG Re-check"
         )
-        responses.append("선생님.. 의사 선생님은 뭐라고 하시나요? 저 괜찮은 거죠?")
 
     elif category == "intervention":
         st.session_state.intervention_done = True
