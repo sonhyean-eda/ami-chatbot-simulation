@@ -242,9 +242,13 @@ def classify_input(user_text: str) -> str:
 
     simple_report_keywords = [
         "보고하도록 하겠습니다",
+        "노티하도록 하겠습니다",
         "의사선생님께 보고",
+        "의사선생님께 노티",
+        "의사에게 노티",
         "의사에게 보고",
-        "보고하겠습니다"
+        "보고하겠습니다",
+        "노티하겠습니다"
     ]
     if any(k in text for k in simple_report_keywords):
         return "report_intro"
@@ -261,11 +265,7 @@ def classify_input(user_text: str) -> str:
         "nrs 8점",
         "압박성 흉통",
         "고혈압 약 복용",
-        "흡연력",
-        "st 분절 상승",
-        "st-segment elevation",
-        "troponin i",
-        "ck-mb",
+        "흡연력",    
         "stemi",
         "sbar"
     ]
@@ -292,11 +292,16 @@ def classify_input(user_text: str) -> str:
 
     closing_keywords = [
         "계속 상태를 관찰",
+        "계속 증상을 관찰",
         "다시 통증이 심해지거나",
+        "통증이 지속되면",
+        "답답해지면",
         "답답해지면 바로 말씀",
         "바로 말씀해 주세요",
+        "바로 알려주세요",
         "계속 관찰할 것",
-        "말씀해 주세요"
+        "말씀해주세요",
+        "알려주세요"
     ]
     if st.session_state.intervention_done and any(k in text for k in closing_keywords):
         return "closing_therapeutic"
