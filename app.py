@@ -159,12 +159,6 @@ CHECKLIST_TEMPLATE: Dict[str, bool] = {
     # 8. 피드백/성찰 Feedback
     "32. 성찰: 디브리핑 참여": False,
 
-    # 프로그램 운영 안정성 및 오류 방지
-    "33. 오류방지: 검사 설명 전 검사결과 제시 차단": False,
-    "34. 오류방지: SBAR 보고 전 처방 제시 차단": False,
-    "35. 오류방지: 중재 설명 전 중재 수행 차단": False,
-    "36. 오류방지: 환자 반응과 시스템 메시지 구분": False,
-    "37. 오류방지: 챗봇의 환자 역할 유지": False,
 }
 # ------------------------------------------------------------
 # 5. 유틸리티 함수
@@ -485,7 +479,6 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         mark_checklist("1. 지각: 초기 접촉 및 자기소개")
         mark_checklist("2. 지각: 주호소 확인")
         mark_checklist("7. 지각: 불안·두려움 확인")
-        mark_checklist("37. 오류방지: 챗봇의 환자 역할 유지")
         responses.append(patient_message(
             "네… 김심근입니다. 선생님, 가슴이 너무 조이고 숨쉬기가 힘들어요. 저 좀 도와주세요."
         ))
@@ -579,7 +572,6 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             responses.append(patient_message(
                 "선생님, 무슨 검사를 하는 건가요? 왜 필요한지 먼저 설명해주시면 좋겠어요. 너무 불안해요."
             ))
-            mark_checklist("33. 오류방지: 검사 설명 전 검사결과 제시 차단")
             responses.append(system_message("검사결과는 학생이 검사 필요성을 설명하고 환자의 협조를 얻은 후 확인할 수 있습니다."))
         else:
             st.session_state.labs_shown = True
@@ -611,7 +603,6 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 
     elif category == "intervention_explanation":
         if not st.session_state.order_shown:
-            mark_checklist("34. 오류방지: SBAR 보고 전 처방 제시 차단")
             responses.append(system_message("중재 설명 전 SBAR 보고를 완료하고 의사 처방을 먼저 확인해야 합니다."))
         else:
             st.session_state.intervention_explained = True
@@ -629,13 +620,11 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 
     elif category == "intervention":
         if not st.session_state.order_shown:
-            mark_checklist("34. 오류방지: SBAR 보고 전 처방 제시 차단")
             responses.append(system_message("아직 의사 처방이 제시되지 않았습니다. SBAR 보고 후 처방을 확인하세요."))
         elif not st.session_state.intervention_explained:
             responses.append(patient_message(
                 "선생님, 산소랑 약을 왜 하는 건지 먼저 설명해주실 수 있을까요? 설명해주시면 협조할게요."
             ))
-            mark_checklist("35. 오류방지: 중재 설명 전 중재 수행 차단")
             responses.append(system_message("중재 수행 전 산소요법과 약물 투여의 필요성을 환자에게 설명해야 합니다."))
         else:
             st.session_state.intervention_done = True
@@ -717,8 +706,6 @@ with col1:
         st.session_state.messages.append(patient_message(
             "허억… 선생님… 가슴이 너무 조여요. 너무 답답하고 숨쉬기가 힘들어요. 저 죽는 거 아니죠?"
         ))
-        mark_checklist("36. 오류방지: 환자 반응과 시스템 메시지 구분")
-        mark_checklist("37. 오류방지: 챗봇의 환자 역할 유지")
         st.rerun()
 
 with col2:
