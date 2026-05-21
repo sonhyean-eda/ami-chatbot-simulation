@@ -102,7 +102,7 @@ POST_INTERVENTION_STATUS: Dict[str, str] = {
     "pain": "NRS 8점에서 3점으로 감소",
     "breathing": "호흡곤란이 다소 완화됨",
     "anxiety": "불안이 감소함",
-    "message": "통증이 8점에서 3점 정도로 줄었고, 숨쉬기가 조금 편해졌어요. 아까보다 덜 불안해요.",
+    "message": "휴… 아까보다는 좀 나아졌어요. 통증이 8점에서 한 3점 정도로 줄어든 것 같고, 숨쉬기도 조금 편해졌어요… 아직 걱정은 되지만 아까보다 덜 불안해요.",
 }
 
 DEBRIEFING_QUESTIONS: List[str] = [
@@ -229,8 +229,11 @@ def naturalize_with_openai(user_input: str, clinical_fact: str, tone: str = "불
 2. 아래 핵심 정보의 의미, 숫자, 검사결과, 병력, 처방을 절대 바꾸지 마세요.
 3. 학생이 묻지 않은 새로운 의학 정보를 먼저 말하지 마세요.
 4. 진단, 처방, 평가, 교육 피드백을 임의로 생성하지 마세요.
-5. 환자 입장에서 증상, 불안, 이해, 협조 여부만 자연스럽게 표현하세요.
-6. 1~3문장으로 답하세요.
+5. 전문용어를 먼저 사용하지 말고, 환자가 실제로 느끼는 증상 중심으로 말하세요.
+6. 너무 반듯한 문장보다 실제 응급실 환자처럼 불안하고 힘든 말투로 답하세요.
+7. 가능한 경우 답변에는 다음 요소 중 2개 이상을 자연스럽게 포함하세요: 현재 느끼는 증상, 불안/두려움, 학생에게 묻는 짧은 질문, 검사·중재에 대한 걱정 또는 협조 의사.
+8. 답변은 1~3문장으로 하되, 말끝은 자연스럽게 흐릴 수 있습니다.
+9. 예: “가슴이 너무 조여요… 숨도 좀 차고요. 저 정말 괜찮은 건가요?”
 """
 
     prompt = f"""
@@ -240,7 +243,7 @@ def naturalize_with_openai(user_input: str, clinical_fact: str, tone: str = "불
 핵심 정보:
 {clinical_fact}
 
-핵심 정보를 유지하면서 실제 환자처럼 한국어로 답하세요.
+핵심 정보를 유지하면서 실제 응급실 환자처럼 자연스럽고 불안한 말투로 한국어로 답하세요.
 """
 
     try:
@@ -385,6 +388,24 @@ def classify_input(user_text: str) -> str:
         return "closing_therapeutic"
 
     # ------------------------------------------------------------
+    # 7. AMI 가능성 판단: 수집 자료를 종합해 심근경색 가능성을 인식하는 표현
+    # ------------------------------------------------------------
+    ami_judgment_keywords = [
+        # Korean expressions students are likely to type
+        "급성심근경색 가능성", "급성심근경색 의심", "ami 가능성", "ami 의심",
+        "심근경색 가능성", "심근경색 의심", "stemi 가능성", "stemi 의심",
+        "심장 문제 가능성", "심장 혈관 문제", "심혈관 문제", "심장 쪽 문제",
+        "수집한 자료를 종합", "자료를 종합", "증상과 위험요인을 고려", "위험요인을 고려",
+        "흉통 양상과 위험요인", "흉통 양상", "고혈압과 흡연력", "방사통과 호흡곤란",
+        "현재 증상으로 보아", "현재 증상으로 봤을 때", "수집한 자료를 보면",
+        "심장 상태 확인이 필요", "심근효소 검사가 필요", "심전도 검사가 필요",
+        "심전도와 혈액검사가 필요", "심전도와 심근효소",
+        "가슴 통증과 위험요인", "흉통과 위험요인", "심장질환 가능성",
+     ]
+    if has_any(text, ami_judgment_keywords):
+        return "ami_judgment"
+
+    # ------------------------------------------------------------
     # 7. 활력징후·객관적 자료 우선 확인
     # - "혈압 정상 수치", "SpO2 알려줘"처럼 활력징후 맥락이 있는 표현은
     #   검사결과 해석보다 활력징후 확인으로 먼저 분류한다.
@@ -480,7 +501,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         mark_checklist("2. 지각: 주호소 확인")
         mark_checklist("7. 지각: 불안·두려움 확인")
         responses.append(patient_message(
-            "네… 김심근입니다. 선생님, 가슴이 너무 조이고 숨쉬기가 힘들어요. 저 좀 도와주세요."
+            "네… 김심근입니다. 가슴이 한가운데가 너무 꽉 조여요… 숨도 차고 식은땀이 나요. 저 이러다 큰일 나는 거 아니죠?"
         ))
 
     elif category == "pain_assessment":
@@ -523,7 +544,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             f"- SpO₂: {VITAL_SIGNS['SpO2']}\n"
             f"- BT: {VITAL_SIGNS['BT']}"
         ))
-        responses.append(patient_message("혈압이랑 맥박이 높은 건가요? 저 많이 위험한 건 아니죠?"))
+        responses.append(patient_message("혈압이랑 맥박이 많이 높은 거예요…? 가슴도 계속 답답한데, 저 지금 위험한 상태인가요?"))
 
     elif category == "family_history":
         mark_checklist("9. 지각: 병력·복용약·위험요인 확인")
@@ -554,6 +575,16 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             fact = f"{PATIENT_INFO['history']}. {PATIENT_INFO['medication']}"
         responses.append(patient_message(naturalize_with_openai(user_text, fact, tone="불안하지만 질문에는 답하는 상태")))
 
+    elif category == "ami_judgment":
+        mark_checklist("10. 판단: 수집 자료를 바탕으로 AMI 가능성 인식")
+        mark_checklist("11. 판단: ECG와 심근효소 검사 필요성 인식")
+        responses.append(patient_message(
+            "심장 문제일 수도 있다는 건가요…? 너무 무서워요. 그래도 정확히 확인하려면 심전도랑 피검사를 해야 한다는 말씀이시죠?"
+        ))
+        responses.append(system_message(
+            "AMI 가능성 인식이 확인되었습니다. 다음 단계로 심전도와 심근효소 검사의 필요성을 환자에게 설명하세요."
+        ))
+
     elif category == "exam_explanation":
         st.session_state.exam_explained = True
         st.session_state.cooperation_formed = True
@@ -564,13 +595,13 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         mark_checklist("14. 반응: 환자의 이해 확인")
         mark_checklist("7. 지각: 불안·두려움 확인")
         responses.append(patient_message(
-            "왜 심전도와 혈액검사가 필요한지 설명을 들으니까 조금 이해가 돼요. 무섭지만 제 상태를 확인하려면 필요하겠네요. 진행해주세요."
+            "아… 심장 상태를 확인하려고 심전도랑 피검사를 하는 거군요. 무섭긴 한데, 설명을 들으니까 해야 할 것 같아요… 빨리 해주세요."
         ))
 
     elif category == "labs":
         if not st.session_state.exam_explained:
             responses.append(patient_message(
-                "선생님, 무슨 검사를 하는 건가요? 왜 필요한지 먼저 설명해주시면 좋겠어요. 너무 불안해요."
+                "선생님… 무슨 검사를 하는 거예요? 왜 해야 하는지 먼저 설명해주시면 좋겠어요. 너무 불안해서요…"
             ))
             responses.append(system_message("검사결과는 학생이 검사 필요성을 설명하고 환자의 협조를 얻은 후 확인할 수 있습니다."))
         else:
@@ -585,10 +616,10 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                 f"- Troponin I: {LAB_RESULTS['Troponin I']}\n"
                 f"- CK-MB: {LAB_RESULTS['CK-MB']}"
             ))
-            responses.append(patient_message("검사 결과가 많이 안 좋은 건가요? 가슴이 아직 너무 답답해서 걱정돼요."))
+            responses.append(patient_message("검사 결과가 안 좋은 건가요…? 아직 가슴이 답답하고 숨도 좀 차서 너무 걱정돼요."))
 
     elif category == "report_intro":
-        responses.append(patient_message("네, 의사 선생님께 빨리 보고해주세요. 너무 무섭고 답답해요."))
+        responses.append(patient_message("네… 의사 선생님께 빨리 말씀드려 주세요. 가슴이 계속 답답해서 너무 무서워요…"))
         responses.append(system_message("SBAR 형식으로 환자 상태, 배경, 사정결과, 제안을 포함하여 보고하면 처방이 제시됩니다."))
 
     elif category == "report_detail":
@@ -615,7 +646,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             mark_checklist("7. 지각: 불안·두려움 확인")
             mark_checklist("14. 반응: 환자의 이해 확인")
             responses.append(patient_message(
-                "산소와 약을 왜 해야 하는지 설명을 들으니 이해가 돼요. 무섭긴 하지만 필요하다고 하시니 협조할게요."
+                "네… 산소랑 약이 왜 필요한지는 알겠어요. 아직 무섭긴 한데, 통증이 줄 수 있다면 해주세요…"
             ))
 
     elif category == "intervention":
@@ -623,7 +654,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             responses.append(system_message("아직 의사 처방이 제시되지 않았습니다. SBAR 보고 후 처방을 확인하세요."))
         elif not st.session_state.intervention_explained:
             responses.append(patient_message(
-                "선생님, 산소랑 약을 왜 하는 건지 먼저 설명해주실 수 있을까요? 설명해주시면 협조할게요."
+                "선생님… 산소랑 약을 왜 해야 하는 건지 먼저 설명해주실 수 있을까요? 무섭지만 설명 들으면 협조할게요…"
             ))
             responses.append(system_message("중재 수행 전 산소요법과 약물 투여의 필요성을 환자에게 설명해야 합니다."))
         else:
@@ -638,7 +669,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                 f"- {DOCTOR_ORDER[2]}\n"
                 f"- {DOCTOR_ORDER[3]}"
             ))
-            responses.append(patient_message("네, 설명을 들었으니까 진행해주세요. 너무 무섭지만 협조할게요."))
+            responses.append(patient_message("네… 설명 들었으니까 진행해주세요. 아직 무섭긴 한데, 선생님 말씀 믿고 해볼게요…"))
             responses.append(system_message("5분 후 환자 상태를 재사정하세요."))
 
     elif category == "reassessment":
@@ -649,25 +680,25 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         mark_checklist("29. 목표달성: 중재 후 불안 재사정")
         mark_checklist("30. 목표달성: 통증·호흡곤란·불안 완화 확인")
         if has_any(user_text, ["통증", "몇 점", "nrs"]):
-            responses.append(patient_message("통증은 지금 3점 정도예요. 아까보다는 훨씬 나아졌어요."))
+            responses.append(patient_message("아까보다는 훨씬 나아요… 지금은 한 3점 정도인 것 같아요. 그래도 아직 조금 답답하긴 해요."))
         elif has_any(user_text, ["숨", "호흡"]):
-            responses.append(patient_message("숨쉬기가 조금 편해졌어요. 아까처럼 숨이 막히는 느낌은 덜해요."))
+            responses.append(patient_message("숨쉬는 건 조금 편해졌어요… 아까처럼 막 숨이 막히는 느낌은 덜해요."))
         elif has_any(user_text, ["불안", "무섭"]):
-            responses.append(patient_message("아직 걱정은 되지만, 설명을 듣고 처치를 받으니까 아까보다 덜 불안해요."))
+            responses.append(patient_message("아직 겁은 나는데요… 그래도 설명 듣고 처치를 받으니까 아까보다는 덜 불안해요."))
         else:
             responses.append(patient_message(POST_INTERVENTION_STATUS["message"]))
 
     elif category == "closing_therapeutic":
         mark_checklist("31. 목표달성: 상태 변화 시 즉시 알리도록 교육")
         mark_checklist("7. 지각: 불안·두려움 확인")
-        responses.append(patient_message("네, 상태가 변하면 바로 말씀드릴게요. 옆에서 봐주셔서 감사합니다."))
+        responses.append(patient_message("네… 다시 아프거나 숨이 차면 바로 말씀드릴게요. 옆에서 봐주시니까 조금 안심돼요…"))
 
     elif category == "therapeutic":
         mark_checklist("7. 지각: 불안·두려움 확인")
-        responses.append(patient_message("그렇게 말씀해주시니까 조금 안심돼요. 그래도 가슴이 너무 답답해서 무서워요."))
+        responses.append(patient_message("그렇게 말씀해주시니까 조금은 안심돼요… 그래도 가슴이 계속 답답해서 아직 무서워요."))
 
     else:
-        responses.append(patient_message("선생님, 가슴이 너무 아프고 숨쉬기가 힘들어요. 지금 어떻게 해야 하나요?"))
+        responses.append(patient_message("선생님… 가슴이 너무 조이고 숨쉬기가 힘들어요. 저 지금 어떻게 되는 건가요…?"))
         responses.append(system_message("환자의 주호소, 통증 양상, 활력징후, 병력 및 위험요인을 단계적으로 사정하세요."))
 
     return responses
@@ -704,7 +735,7 @@ with col1:
         reset_simulation()
         st.session_state.started = True
         st.session_state.messages.append(patient_message(
-            "허억… 선생님… 가슴이 너무 조여요. 너무 답답하고 숨쉬기가 힘들어요. 저 죽는 거 아니죠?"
+            "허억… 선생님… 가슴이 너무 꽉 조여요. 숨도 차고 식은땀이 나요… 저 이러다 죽는 거 아니죠?"
         ))
         st.rerun()
 
