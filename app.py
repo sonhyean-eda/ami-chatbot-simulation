@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import streamlit as st
 from openai import OpenAI
@@ -9,7 +9,11 @@ from openai import OpenAI
 # - 챗봇 역할: 급성심근경색 의심 환자 '김심근'
 # - 학습자 역할: 응급실 학생간호사
 # - 시스템 역할: 검사결과, 처방, 진행 조건 안내
-# - 설계 원칙: 환자 정보/검사결과/처방/중재 후 반응은 고정값으로 유지
+# - 설계 원칙:
+#   1) 환자 정보/검사결과/처방/중재 후 반응은 고정값으로 유지
+#   2) King 목표달성이론 흐름을 한 방향으로 반영
+#   3) 챗봇은 환자 역할만 수행하고 의사/교수자/평가자 역할을 하지 않음
+#   4) 단계별 진행 조건과 누적 인식으로 핵심 단계 누락을 방지함
 # ============================================================
 
 # ------------------------------------------------------------
@@ -31,6 +35,7 @@ client = OpenAI(api_key=api_key) if api_key else None
 # 3. 앱 제목 및 역할 안내
 # ------------------------------------------------------------
 st.title("🫀 급성심근경색(AMI) 챗봇 가상환자 시뮬레이션")
+
 st.markdown("""
 이 프로그램은 **King의 목표달성이론을 적용한 AMI 챗봇 가상환자 시뮬레이션 프로토타입**입니다.
 
@@ -40,17 +45,29 @@ st.markdown("""
 - **시스템:** 활력징후, 검사결과, 의사 처방, 진행 조건을 안내합니다.
 
 **오류 방지 설계**
-- 환자 기본정보, 활력징후, 검사결과, 처방, 중재 후 반응은 **고정값**으로 제시됩니다.
-- 챗봇은 의사, 교수자, 평가자 역할을 하지 않습니다.
-- 검사 설명, SBAR 보고, 중재 설명, 재사정 등 핵심 단계가 누락되지 않도록 **단계별 진행 조건**을 설정했습니다.
-- OpenAI API는 선택 사항이며, 사용 시에도 **환자 말투 자연화**에만 사용됩니다.
+- 환자 기본정보, 활력징후, 검사결과, 의사 처방, 중재 후 반응은 **고정값**으로 제시됩니다.
+- 챗봇은 **의사, 교수자, 평가자 역할을 하지 않으며**, 급성심근경색이 의심되는 환자 역할만 수행합니다.
+- 검사 설명, 환자 협조 형성, SBAR 보고, 중재 설명, 중재 수행, 중재 후 재사정 등 핵심 단계가 누락되지 않도록 **단계별 진행 조건**을 설정했습니다.
+- 학생이 한 문장으로 완성된 답변을 입력하지 않아도, 짧은 발화를 단계별로 입력하면 프로그램이 이를 **누적 인식**하도록 구성했습니다.
+- OpenAI API는 선택 사항이며, 사용 시에도 **환자 말투 자연화**에만 사용됩니다. 환자 정보, 검사결과, 처방, 중재 후 반응은 임의로 변경되지 않습니다.
+
+**King 목표달성이론 흐름 반영**
+- 프로그램은 **지각 → 판단 → 행위 → 반응 → 상호작용 → 교류작용 → 목표달성** 순서로 한 방향으로 진행됩니다.
+- 지각 단계는 **초기 접촉 및 주호소 확인 → 통증 및 동반 증상 사정 → 활력징후 확인 → 병력 및 위험요인 사정**으로 구성됩니다.
+- 검사결과 확인은 판단 단계로 되돌아가는 것이 아니라, 이후 **상호작용 단계에서 환자 문제를 구체화하기 위한 자료**로 사용됩니다.
+- 상호작용 단계에는 **문제 확인, 공동 목표 설정, 목표달성 방법 탐색, 목표달성 방법 합의**가 포함됩니다.
+- 교류작용 단계에는 **SBAR 보고, 처방 확인, 중재 설명, 중재 수행**이 포함됩니다.
+
+**학생 발화 인식 방식**
+- 학생이 긴 문장을 한 번에 입력하지 않아도 됩니다.
+- 검사 설명, 상호작용, 중재 설명은 **짧은 문장들을 누적하여 인식**합니다.
 """)
 
 if not api_key:
     st.warning("OPENAI_API_KEY가 설정되지 않았습니다. 규칙기반 응답만 사용됩니다.")
 
 # ------------------------------------------------------------
-# 4. 고정 데이터: 연구 시나리오와 일치하도록 고정
+# 4. 고정 데이터
 # ------------------------------------------------------------
 PATIENT_INFO: Dict[str, str] = {
     "name": "김심근",
@@ -108,80 +125,81 @@ POST_INTERVENTION_STATUS: Dict[str, str] = {
 DEBRIEFING_QUESTIONS: List[str] = [
     "환자의 상태를 파악하는 데 가장 중요했던 사정자료는 무엇이었습니까?",
     "검사와 중재의 필요성을 환자에게 어떻게 설명하였으며, 그 설명이 환자의 협조에 어떤 영향을 주었습니까?",
-    "학생과 환자 간의 상호작용이 교류작용(transaction)으로 이어졌다고 판단한 순간은 언제였습니까?",
+    "상호작용 단계에서 환자의 문제를 어떻게 확인하고, 공동 목표와 목표달성 방법을 어떻게 합의하였습니까?",
     "중재 후 통증, 호흡곤란, 불안 변화와 관련하여 어떤 목표가 달성되었다고 보았습니까?",
 ]
 
-CHECKLIST_TEMPLATE: Dict[str, bool] = {
-    # 1. 지각 Perception: 환자 문제 확인 및 초기 사정
-    "1. 지각: 초기 접촉 및 자기소개": False,
-    "2. 지각: 주호소 확인": False,
-    "3. 지각: 통증 위치·양상·시작 시점 확인": False,
-    "4. 지각: 통증 강도(NRS) 확인": False,
-    "5. 지각: 방사통 확인": False,
-    "6. 지각: 동반 증상 확인": False,
-    "7. 지각: 불안·두려움 확인": False,
-    "8. 지각: 활력징후 확인": False,
-    "9. 지각: 병력·복용약·위험요인 확인": False,
-
-    # 2. 판단 Judgment: AMI 가능성 판단
-    "10. 판단: 수집 자료를 바탕으로 AMI 가능성 인식": False,
-    "11. 판단: ECG와 심근효소 검사 필요성 인식": False,
-
-    # 3. 행위 Action / 4. 반응 Reaction: 검사 설명과 협조 형성
-    "12. 행위: 심전도 검사 필요성 설명": False,
-    "13. 행위: 혈액검사 필요성 설명": False,
-    "14. 반응: 환자의 이해 확인": False,
-    "15. 반응: 검사 협조 형성": False,
-
-    # 5. 상호작용 Interaction: 검사 결과 확인 및 목표 공유
-    "16. 상호작용: ECG 결과 확인": False,
-    "17. 상호작용: Troponin I 및 CK-MB 결과 확인": False,
-    "18. 상호작용: 검사결과를 바탕으로 환자 문제 구체화": False,
-    "19. 상호작용: 흉통 완화·호흡곤란 감소·불안 감소 목표 공유": False,
-
-    # 6. 교류작용 Transaction: SBAR 보고와 처방 기반 중재
-    "20. 교류작용: SBAR 보고 수행": False,
-    "21. 교류작용: 의사 처방 확인": False,
-    "22. 교류작용: 산소요법 필요성 설명": False,
-    "23. 교류작용: NTG 투여 필요성 설명": False,
-    "24. 교류작용: Aspirin 투여 필요성 설명": False,
-    "25. 교류작용: 중재 전 환자 협조 획득": False,
-    "26. 교류작용: 처방 기반 중재 수행": False,
-
-    # 7. 목표달성 Goal Attainment: 중재 후 재사정
-    "27. 목표달성: 중재 후 통증 재사정": False,
-    "28. 목표달성: 중재 후 호흡곤란 재사정": False,
-    "29. 목표달성: 중재 후 불안 재사정": False,
-    "30. 목표달성: 통증·호흡곤란·불안 완화 확인": False,
-    "31. 목표달성: 상태 변화 시 즉시 알리도록 교육": False,
-
-    # 8. 피드백/성찰 Feedback
-    "32. 성찰: 디브리핑 참여": False,
-
-}
 # ------------------------------------------------------------
-# 5. 유틸리티 함수
+# 5. 체크리스트: 화면 표시 항목과 코드에서 체크하는 항목명 통일
+# ------------------------------------------------------------
+CHECKLIST_TEMPLATE: Dict[str, bool] = {
+    "1. 지각: 초기 접촉 및 주호소 확인": False,
+    "2. 지각: 통증 및 동반 증상 사정": False,
+    "3. 지각: 활력징후 확인": False,
+    "4. 지각: 병력 및 위험요인 사정": False,
+    "5. 판단: AMI 의심 상황 판단 및 검사 필요성 인식": False,
+    "6. 행위/반응: 검사 필요성 설명 및 검사 협조 형성": False,
+    "7. 상호작용: 검사결과 기반 문제 구체화": False,
+    "8. 상호작용: 공동 목표 설정 및 목표달성 방법 합의": False,
+    "9. 교류작용: SBAR 보고 및 처방 확인": False,
+    "10. 교류작용: 중재 설명 및 중재 수행": False,
+    "11. 목표달성: 중재 후 재사정 및 목표달성 확인": False,
+    "12. 성찰: 디브리핑": False,
+}
+
+# ------------------------------------------------------------
+# 6. 세션 상태 초기화
 # ------------------------------------------------------------
 def init_state() -> None:
     defaults = {
         "started": False,
         "ended": False,
         "messages": [],
+        "checklist": CHECKLIST_TEMPLATE.copy(),
+
+        # 표의 프로그램 진행 단계별 상태
+        "intro_done": False,
+        "pain_symptom_done": False,
+        "vitals_done": False,
+        "history_risk_done": False,
+
+        # 기본 진행 상태
         "vitals_shown": False,
-        "exam_explained": False,
+        "ami_judged": False,
         "labs_shown": False,
         "sbar_reported": False,
         "order_shown": False,
-        "intervention_explained": False,
-        "cooperation_formed": False,
         "intervention_done": False,
         "reassessment_done": False,
         "goal_achieved": False,
+        "cooperation_formed": False,
+
+        # 검사 설명 누적 인식
+        "ecg_explained": False,
+        "blood_test_explained": False,
+        "exam_cooperation_requested": False,
+        "exam_explained": False,
+
+        # 상호작용 누적 인식
+        "problem_identified": False,
+        "goal_set": False,
+        "means_explained": False,
+        "agreement_obtained": False,
+        "interaction_completed": False,
+
+        # 중재 설명 누적 인식
+        "oxygen_explained": False,
+        "medication_explained": False,
+        "intervention_purpose_explained": False,
+        "side_effect_guidance_given": False,
+        "intervention_cooperation_requested": False,
+        "intervention_explained": False,
+
+        # 디브리핑
         "show_debriefing": False,
         "debrief_submitted": False,
-        "checklist": CHECKLIST_TEMPLATE.copy(),
     }
+
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
@@ -193,6 +211,9 @@ def reset_simulation() -> None:
     init_state()
 
 
+# ------------------------------------------------------------
+# 7. 메시지 및 체크 함수
+# ------------------------------------------------------------
 def patient_message(text: str) -> Dict[str, str]:
     return {"role": "assistant", "content": f"[환자] {text}"}
 
@@ -207,13 +228,16 @@ def mark_checklist(item: str) -> None:
 
 
 def has_any(text: str, keywords: List[str]) -> bool:
-    """대소문자 혼합 입력(BP/bp, EKG/ekg 등)을 안정적으로 인식한다."""
     normalized_text = text.lower()
     return any(keyword.lower() in normalized_text for keyword in keywords)
 
 
+def count_true(values: List[bool]) -> int:
+    return sum(1 for value in values if value)
+
+
 # ------------------------------------------------------------
-# 6. OpenAI 말투 자연화: 환자 역할만 허용
+# 8. OpenAI 말투 자연화: 환자 역할만 허용
 # ------------------------------------------------------------
 def naturalize_with_openai(user_input: str, clinical_fact: str, tone: str = "불안하고 통증이 심한 상태") -> str:
     """고정 임상정보를 바꾸지 않고 환자 말투만 자연화한다."""
@@ -233,8 +257,8 @@ def naturalize_with_openai(user_input: str, clinical_fact: str, tone: str = "불
 6. 너무 반듯한 문장보다 실제 응급실 환자처럼 불안하고 힘든 말투로 답하세요.
 7. 가능한 경우 답변에는 다음 요소 중 2개 이상을 자연스럽게 포함하세요: 현재 느끼는 증상, 불안/두려움, 학생에게 묻는 짧은 질문, 검사·중재에 대한 걱정 또는 협조 의사.
 8. 답변은 1~3문장으로 하되, 말끝은 자연스럽게 흐릴 수 있습니다.
-9. 예: “가슴이 너무 조여요… 숨도 좀 차고요. 저 정말 괜찮은 건가요?”
-"""
+9. 예: “가슴이 너무 조여요… 숨도 좀 차고요. 저 정말 괜찮은 건가요?
+”"""
 
     prompt = f"""
 학생 입력:
@@ -259,22 +283,162 @@ def naturalize_with_openai(user_input: str, clinical_fact: str, tone: str = "불
 
 
 # ------------------------------------------------------------
-# 7. 입력 분류: 단계별 진행 조건 반영
+# 9. 누적 인식 업데이트 함수
+# ------------------------------------------------------------
+def update_exam_explanation_state(text: str) -> List[str]:
+    """심전도 설명, 혈액검사 설명, 협조 요청을 누적 인식한다."""
+    updates = []
+
+    ecg_keywords = [
+        "심전도", "ecg", "ekg", "12유도", "12-lead",
+        "심장 전기", "전기적 변화", "심장 상태", "심장 확인"
+    ]
+    blood_keywords = [
+        "혈액검사", "혈액 검사", "피검사", "채혈", "심근효소",
+        "트로포닌", "troponin", "ck-mb", "ckmb", "심장근육 손상", "심근 손상"
+    ]
+    cooperation_keywords = [
+        "협조", "동의", "괜찮으실까요", "진행해도 될까요",
+        "검사해도 될까요", "검사하겠습니다", "진행하겠습니다"
+    ]
+
+    if has_any(text, ecg_keywords):
+        st.session_state.ecg_explained = True
+        updates.append("심전도 검사 설명")
+    if has_any(text, blood_keywords):
+        st.session_state.blood_test_explained = True
+        updates.append("혈액검사 설명")
+    if has_any(text, cooperation_keywords):
+        st.session_state.exam_cooperation_requested = True
+        updates.append("검사 협조 요청")
+
+    if (
+        st.session_state.ecg_explained
+        and st.session_state.blood_test_explained
+        and st.session_state.exam_cooperation_requested
+    ):
+        st.session_state.exam_explained = True
+        st.session_state.cooperation_formed = True
+        mark_checklist("6. 행위/반응: 검사 필요성 설명 및 검사 협조 형성")
+
+    return updates
+
+
+def update_interaction_state(text: str) -> List[str]:
+    """문제 확인, 목표 설정, 방법 제시, 합의/협조 확인을 누적 인식한다."""
+    updates = []
+
+    problem_keywords = [
+        "문제", "가장 힘든", "가장 큰 문제", "가슴 통증", "흉통",
+        "숨찬", "호흡곤란", "불안", "답답", "검사결과", "검사 결과"
+    ]
+    goal_keywords = [
+        "목표", "통증을 줄", "통증 완화", "숨쉬기 편", "숨 쉬기 편",
+        "호흡을 편", "불안을 줄", "불안 완화", "안정"
+    ]
+    means_keywords = [
+        "이를 위해", "방법", "산소", "약물", "약", "니트로",
+        "ntg", "아스피린", "aspirin", "심전도", "처치", "중재", "치료"
+    ]
+    agreement_keywords = [
+        "협조", "동의", "괜찮으실까요", "진행해도 될까요",
+        "함께", "같이", "해보겠습니다", "진행하겠습니다"
+    ]
+
+    if has_any(text, problem_keywords):
+        st.session_state.problem_identified = True
+        updates.append("환자 문제 확인")
+    if has_any(text, goal_keywords):
+        st.session_state.goal_set = True
+        updates.append("공동 목표 설정")
+    if has_any(text, means_keywords):
+        st.session_state.means_explained = True
+        updates.append("목표달성 방법 제시")
+    if has_any(text, agreement_keywords):
+        st.session_state.agreement_obtained = True
+        updates.append("방법 합의/협조 확인")
+
+    interaction_count = count_true([
+        st.session_state.problem_identified,
+        st.session_state.goal_set,
+        st.session_state.means_explained,
+        st.session_state.agreement_obtained,
+    ])
+
+    # 4요소 중 3개 이상이면 상호작용 완료로 인정
+    if interaction_count >= 3:
+        st.session_state.interaction_completed = True
+        st.session_state.cooperation_formed = True
+        mark_checklist("8. 상호작용: 공동 목표 설정 및 목표달성 방법 합의")
+
+    return updates
+
+
+def update_intervention_explanation_state(text: str) -> List[str]:
+    """산소, 약물, 목적, 이상반응 안내, 협조 요청을 누적 인식한다."""
+    updates = []
+
+    oxygen_keywords = [
+        "산소", "o2", "o₂", "비강캐뉼라", "비강 캐뉼라",
+        "숨쉬기", "숨 쉬기", "호흡"
+    ]
+    medication_keywords = [
+        "약", "약물", "니트로", "니트로글리세린", "ntg",
+        "아스피린", "aspirin", "투여", "복용"
+    ]
+    purpose_keywords = [
+        "통증", "흉통", "숨쉬기", "숨 쉬기", "호흡곤란", "완화",
+        "줄", "도움", "편하게", "혈전", "예방", "심장 부담"
+    ]
+    side_effect_keywords = [
+        "어지럽", "불편", "이상", "부작용", "말씀", "알려",
+        "바로 말", "불편하면"
+    ]
+    cooperation_keywords = [
+        "협조", "동의", "괜찮으실까요", "진행해도 될까요",
+        "진행하겠습니다", "시행하겠습니다", "해도 될까요"
+    ]
+
+    if has_any(text, oxygen_keywords):
+        st.session_state.oxygen_explained = True
+        updates.append("산소요법 설명")
+    if has_any(text, medication_keywords):
+        st.session_state.medication_explained = True
+        updates.append("약물투여 설명")
+    if has_any(text, purpose_keywords):
+        st.session_state.intervention_purpose_explained = True
+        updates.append("중재 목적 설명")
+    if has_any(text, side_effect_keywords):
+        st.session_state.side_effect_guidance_given = True
+        updates.append("이상반응/불편감 안내")
+    if has_any(text, cooperation_keywords):
+        st.session_state.intervention_cooperation_requested = True
+        updates.append("중재 협조 요청")
+
+    # 산소 또는 약물 중 하나 이상 + 목적 설명 + 협조 요청이면 중재 설명 완료
+    if (
+        (st.session_state.oxygen_explained or st.session_state.medication_explained)
+        and st.session_state.intervention_purpose_explained
+        and st.session_state.intervention_cooperation_requested
+    ):
+        st.session_state.intervention_explained = True
+
+    return updates
+
+
+# ------------------------------------------------------------
+# 10. 입력 분류
 # ------------------------------------------------------------
 def classify_input(user_text: str) -> str:
     """
-    학생 12명의 예상 입력 표현을 반영한 규칙기반 분류 함수.
-    분류 순서는 오류 방지를 위해 다음 원칙을 따른다.
-    1) 검사/중재 설명 의도는 결과 확인이나 수행보다 먼저 판정한다.
-    2) SBAR 상세 보고는 단순 보고 예고보다 먼저 판정한다.
-    3) 중재 수행은 의사 처방 확인 및 중재 설명 후에만 실제 수행된다.
-    4) 재사정은 중재가 완료된 이후에만 재사정으로 인정한다.
+    분류 원칙:
+    1) 병력 확인은 활력징후 확인보다 먼저 분류하여 '고혈압 있으세요?' 오류를 방지한다.
+    2) 검사 설명, 상호작용, 중재 설명은 누적 인식을 위해 별도 category로 보낸다.
+    3) 중재 수행은 처방 확인 및 중재 설명 후에만 수행된다.
+    4) 재사정은 중재 완료 후에만 인정된다.
     """
     text = user_text.lower().strip()
 
-    # ------------------------------------------------------------
-    # -1. 초기 접촉 및 자기소개
-    # ------------------------------------------------------------
     intro_keywords = [
         "안녕하세요", "학생간호사", "간호학생", "담당 간호사", "담당 학생",
         "제가 도와드리겠습니다", "제가 확인하겠습니다", "제가 사정하겠습니다",
@@ -283,102 +447,15 @@ def classify_input(user_text: str) -> str:
     if has_any(text, intro_keywords):
         return "intro"
 
-    # ------------------------------------------------------------
-    # 0. 검사 필요성 설명: 심전도·혈액검사 이유 설명 및 협조 유도
-    # ------------------------------------------------------------
-    exam_explanation_keywords = [
-        "검사 이유", "검사 필요성", "왜 검사", "왜 해야", "검사를 해야", "검사해야",
-        "검사를 해보겠습니다", "검사하겠습니다", "검사를 진행", "검사를 시행",
-        "심전도가 필요", "심전도 검사가 필요", "ecg가 필요", "ekg가 필요",
-        "혈액검사가 필요", "혈액 검사가 필요", "피검사가 필요", "채혈이 필요",
-        "정확한 상태 파악", "상태 확인", "현재 상태 확인", "심장 상태 확인",
-        "정밀한 진단", "관련 수치 확인", "심근효소", "트로포닌 확인", "ck-mb 확인",
-        "알기 쉽게", "알아듣기 쉽게", "이해하기 쉽게", "납득", "협조 요청", "협조를 부탁",
-        "불안 완화", "불안을 줄이", "검사에 협조",
-    ]
-    if has_any(text, exam_explanation_keywords):
-        return "exam_explanation"
-
-    # ------------------------------------------------------------
-    # 1. 중재 필요성 설명: 산소요법·약물투여 이유 및 환자 협조 설명
-    # ------------------------------------------------------------
-    intervention_explanation_keywords = [
-        "중재 필요성", "중재가 필요", "중재 이유", "처치가 필요", "처치 이유",
-        "산소요법 이유", "산소 요법 이유", "산소가 필요", "산소를 드리는 이유",
-        "산소를 투여하는 이유", "산소 투여가 필요", "산소공급", "산소 공급",
-        "약물 투여 이유", "약을 드리는 이유", "약물이 필요", "약물 투여가 필요",
-        "약물 작용", "처방된 약", "니트로글리세린이 필요", "니트로가 필요", "ntg가 필요",
-        "아스피린이 필요", "aspirin이 필요", "혈관확장", "혈관 확장", "혈류공급", "혈류 공급",
-        "통증 감소", "통증을 줄이기 위해", "심장 부담", "호흡을 편하게", "상태를 안정",
-        "혈전 예방", "부작용", "불편하면 말씀", "환자 협조", "이해되도록 설명",
-        "설명드리겠습니다", "설명 드리겠습니다",
-    ]
-    # 중재명만 입력한 경우 바로 설명으로 오분류되지 않도록 설명/필요/목적 표현을 함께 확인한다.
-    explanation_intent_keywords = [
-        "이유", "필요", "위해", "때문", "설명", "작용", "혈관", "혈류", "혈전", "부담", "협조", "부작용"
-    ]
-    if has_any(text, intervention_explanation_keywords) and has_any(text, explanation_intent_keywords):
-        return "intervention_explanation"
-
-    # ------------------------------------------------------------
-    # 2. 의료진 보고·SBAR 상세 보고
-    # ------------------------------------------------------------
-    report_action_keywords = [
-        "sbar", "sbar 형식", "병원 보고 형식", "보고드립니다", "보고 드립니다",
-        "노티드립니다", "노티 드립니다", "의사에게 보고", "의료진 보고",
-        "의사선생님께 보고", "의사 선생님께 보고", "처방 부탁", "처방 요청",
-    ]
-    report_content_keywords = [
-        "김심근", "62세", "남성", "택시", "흉통", "가슴", "압박성", "nrs", "8점",
-        "30분", "흉통 지속", "불안 호소", "호흡곤란", "식은땀", "고혈압", "흡연",
-        "가족력", "심전도", "ecg", "ekg", "st 상승", "st분절", "st 분절", "st-segment",
-        "트로포닌", "troponin", "ck-mb", "ckmb", "검사 완료", "ami", "ami 의심",
-        "급성심근경색", "급성심근경색 의심", "심근경색", "stemi",
-    ]
-    if has_any(text, report_action_keywords) and has_any(text, report_content_keywords):
-        return "report_detail"
-
-    # ------------------------------------------------------------
-    # 3. 단순 보고 예고
-    # ------------------------------------------------------------
-    simple_report_keywords = [
-        "보고하겠습니다", "보고 하겠습니다", "보고하도록", "보고할게요", "보고 드릴게요",
-        "노티하겠습니다", "노티 하겠습니다", "노티하도록", "노티할게요",
-        "의사에게 알리", "의사에게 보고", "의료진에게 보고", "의사선생님", "의사 선생님",
-    ]
-    if has_any(text, simple_report_keywords):
-        return "report_intro"
-
-    # ------------------------------------------------------------
-    # 4. 처방 기반 중재 수행
-    # ------------------------------------------------------------
-    intervention_keywords = [
-        "산소 투여", "산소를 투여", "산소를 적용", "산소 적용", "산소 연결", "산소를 연결",
-        "산소요법 시행", "산소 요법 시행", "o2", "o₂", "nasal cannula", "비강캐뉼라", "비강 캐뉼라",
-        "ntg 투여", "ntg", "니트로 투여", "니트로글리세린 투여", "니트로글리세린", "니트로",
-        "아스피린 투여", "아스피린", "aspirin", "약물을 투여", "약물 투여", "약을 드리겠습니다",
-        "처방에 따라", "처방대로", "12-lead", "12유도", "심전도 재확인", "ekg re-check", "ecg re-check",
-        "드리겠습니다", "투여하겠습니다", "시행하겠습니다",
-    ]
-    if has_any(text, intervention_keywords):
-        return "intervention"
-
-    # ------------------------------------------------------------
-    # 5. 중재 후 재사정 및 상태 변화 확인
-    # ------------------------------------------------------------
+    # 재사정은 중재 후에만 우선 인정
     reassess_keywords = [
         "재사정", "다시 확인", "상태를 다시", "치료 후", "중재 후", "처치 후",
-        "통증 변화", "통증 감소", "통증은 지금", "지금 통증", "가슴통증 몇 점", "가슴 통증 몇 점",
-        "몇 점", "nrs", "통증척도", "호흡 상태", "호흡은", "숨쉬기", "숨 쉬기", "숨은",
-        "숨 쉬는 건 괜찮", "숨쉬는 건 괜찮", "불편감", "불편한", "더 불편", "다른 불편",
-        "불안 정도", "불안 완화", "불안 감소", "불안은", "어떠세요", "나아졌", "완화",
+        "지금 통증", "통증은 지금", "몇 점", "nrs", "통증척도",
+        "호흡은", "숨쉬기", "숨 쉬기", "불안은", "어떠세요", "나아졌", "완화"
     ]
     if st.session_state.intervention_done and has_any(text, reassess_keywords):
         return "reassessment"
 
-    # ------------------------------------------------------------
-    # 6. 중재 후 치료적 마무리 및 환자 교육
-    # ------------------------------------------------------------
     closing_keywords = [
         "바로 말씀", "말씀해주세요", "말씀해 주세요", "알려주세요", "알려 주세요",
         "계속 관찰", "계속 살피", "옆에 있겠습니다", "상태가 변하면", "통증이 심해지면",
@@ -387,101 +464,140 @@ def classify_input(user_text: str) -> str:
     if st.session_state.intervention_done and has_any(text, closing_keywords):
         return "closing_therapeutic"
 
-    # ------------------------------------------------------------
-    # 7. AMI 가능성 판단: 수집 자료를 종합해 심근경색 가능성을 인식하는 표현
-    # ------------------------------------------------------------
+    # SBAR 상세 보고
+    report_action_keywords = [
+        "sbar", "sbar 형식", "보고드립니다", "보고 드립니다",
+        "노티드립니다", "노티 드립니다", "처방 부탁", "처방 요청"
+    ]
+    report_content_keywords = [
+        "김심근", "62세", "흉통", "nrs", "8점", "30분", "고혈압", "흡연",
+        "가족력", "심전도", "ecg", "ekg", "st 상승", "트로포닌",
+        "troponin", "ck-mb", "ckmb", "ami", "급성심근경색", "심근경색", "stemi"
+    ]
+    if has_any(text, report_action_keywords) and has_any(text, report_content_keywords):
+        return "report_detail"
+
+    # 단순 보고 예고
+    simple_report_keywords = [
+        "보고하겠습니다", "보고 하겠습니다", "보고하도록", "보고할게요", "보고 드릴게요",
+        "노티하겠습니다", "노티 하겠습니다", "의사에게 알리", "의사에게 보고",
+        "의료진에게 보고", "의사선생님", "의사 선생님",
+    ]
+    if has_any(text, simple_report_keywords):
+        return "report_intro"
+
+    # 중재 수행
+    intervention_do_keywords = [
+        "처방에 따라", "처방대로", "산소 투여", "산소를 투여", "산소 적용", "산소 연결",
+        "비강캐뉼라", "비강 캐뉼라", "ntg 투여", "니트로 투여", "니트로글리세린 투여",
+        "아스피린 투여", "약물을 투여", "약물 투여", "12-lead", "12유도",
+        "심전도 재확인", "ecg re-check", "ekg re-check"
+    ]
+    if has_any(text, intervention_do_keywords):
+        return "intervention"
+
+    # AMI 가능성 판단
     ami_judgment_keywords = [
-        # Korean expressions students are likely to type
         "급성심근경색 가능성", "급성심근경색 의심", "ami 가능성", "ami 의심",
         "심근경색 가능성", "심근경색 의심", "stemi 가능성", "stemi 의심",
         "심장 문제 가능성", "심장 혈관 문제", "심혈관 문제", "심장 쪽 문제",
-        "수집한 자료를 종합", "자료를 종합", "증상과 위험요인을 고려", "위험요인을 고려",
-        "흉통 양상과 위험요인", "흉통 양상", "고혈압과 흡연력", "방사통과 호흡곤란",
-        "현재 증상으로 보아", "현재 증상으로 봤을 때", "수집한 자료를 보면",
-        "심장 상태 확인이 필요", "심근효소 검사가 필요", "심전도 검사가 필요",
-        "심전도와 혈액검사가 필요", "심전도와 심근효소",
-        "가슴 통증과 위험요인", "흉통과 위험요인", "심장질환 가능성",
-     ]
+        "수집한 자료를 종합", "자료를 종합", "증상과 위험요인", "위험요인",
+        "현재 증상으로 보아", "현재 증상으로 봤을 때", "심장 상태 확인이 필요"
+    ]
     if has_any(text, ami_judgment_keywords):
         return "ami_judgment"
 
-    # ------------------------------------------------------------
-    # 7. 활력징후·객관적 자료 우선 확인
-    # - "혈압 정상 수치", "SpO2 알려줘"처럼 활력징후 맥락이 있는 표현은
-    #   검사결과 해석보다 활력징후 확인으로 먼저 분류한다.
-    # ------------------------------------------------------------
-    vitals_priority_keywords = [
-        "활력징후", "바이탈", "v/s", "vs", "혈압", "bp", "맥박", "pr",
-        "호흡수", "rr", "산소포화도", "spo2", "saturation", "세츄", "체온", "bt",
-    ]
-    if has_any(text, vitals_priority_keywords):
-        return "vitals"
-
-    # ------------------------------------------------------------
-    # 8. 검사결과·임상 판단 확인
-    # ------------------------------------------------------------
-    labs_keywords = [
-        "검사결과", "검사 결과", "검사수치", "검사 수치", "결과 확인", "결과 해석", "결과 토대로",
-        "결과", "심전도 결과", "심전도", "ecg", "ekg", "12유도", "12-lead",
-        "혈액검사 결과", "혈액검사", "피검사", "채혈", "lab", "트로포닌", "troponin",
-        "ck-mb", "ckmb", "환자 상태", "상태 판단", "정상 수치", "정상범위", "비정상 수치",
-        "이상 수치", "의미있는 자료", "의미 있는 자료", "st 상승", "st분절", "st 분절",
-        "ami", "ami 의심", "급성심근경색", "심근경색", "stemi", "유추되는 질환명",
-        "감별진단", "다른 질병", "다음 조치", "우선 조치", "처치 필요",
-    ]
-    if has_any(text, labs_keywords):
-        return "labs"
-
-    # ------------------------------------------------------------
-    # 9. 활력징후·객관적 자료 확인
-    # ------------------------------------------------------------
-    vitals_keywords = [
-        "활력징후", "바이탈", "현재 바이탈", "정상 바이탈", "v/s", "vs", "혈압", "bp", "맥박", "pr",
-        "호흡수", "rr", "산소포화도", "spo2", "saturation", "세츄", "체온", "bt",
-        "정상 수치", "정상범위", "이상 수치", "비정상 수치", "객관적 자료", "측정해", "측정", "알려줘",
-    ]
-    if has_any(text, vitals_keywords):
-        return "vitals"
-
-    # ------------------------------------------------------------
-    # 10. 가족력
-    # ------------------------------------------------------------
+    # 병력·위험요인 확인: 활력징후보다 먼저 둔다.
     family_history_keywords = [
-        "가족력", "가족 중", "가족 중 심질환", "심장질환 가족", "심질환 가족", "아버지", "어머니", "부친", "모친",
+        "가족력", "가족 중", "심장질환 가족", "심질환 가족",
+        "아버지", "어머니", "부친", "모친"
     ]
     if has_any(text, family_history_keywords):
         return "family_history"
 
-    # ------------------------------------------------------------
-    # 11. 병력·위험요인 확인
-    # ------------------------------------------------------------
     history_keywords = [
-        "과거력", "병력", "과거 병력", "조심해야 할 병력", "기저질환", "질환", "심장질환", "심질환",
-        "고혈압", "당뇨", "고지혈증", "평소", "복용약물", "현재 복용 약물", "복용약", "고혈압 약",
-        "약", "복용", "담배", "흡연", "음주", "생활습관", "운동 부족", "운동", "알레르기", "위험요인",
+        "과거력", "병력", "과거 병력", "기저질환",
+        "고혈압", "혈압약", "혈압 약", "당뇨", "고지혈증",
+        "심장질환", "심질환", "진단받", "앓고", "질환 있으",
+        "복용약", "현재 복용 약물", "약 드시", "약 먹",
+        "담배", "흡연", "음주", "술", "알레르기",
+        "식습관", "생활습관", "운동"
     ]
     if has_any(text, history_keywords):
         return "history"
 
-    # ------------------------------------------------------------
-    # 12. 초기 사정: 통증·흉통·불안·동반 증상
-    # ------------------------------------------------------------
+    # 검사 설명: 누적 인식
+    exam_keywords = [
+        "심전도", "ecg", "ekg", "12유도", "12-lead",
+        "혈액검사", "혈액 검사", "피검사", "채혈", "심근효소",
+        "트로포닌", "troponin", "ck-mb", "ckmb", "검사", "심장 상태",
+        "전기적 변화", "심장근육 손상", "협조"
+    ]
+    if not st.session_state.exam_explained and has_any(text, exam_keywords):
+        return "exam_explanation"
+
+    # 검사결과 확인: 검사 설명 완료 후 결과 확인
+    labs_keywords = [
+        "검사결과", "검사 결과", "검사수치", "검사 수치", "결과 확인", "결과 해석",
+        "심전도 결과", "혈액검사 결과", "lab", "트로포닌", "troponin",
+        "ck-mb", "ckmb", "st 상승", "st분절", "st 분절", "stemi"
+    ]
+    if has_any(text, labs_keywords):
+        return "labs"
+
+    # 상호작용: 검사결과 확인 후 문제·목표·방법·합의 누적 인식
+    interaction_keywords = [
+        "문제", "가장 힘든", "가장 큰 문제", "목표", "통증을 줄",
+        "숨쉬기 편", "호흡을 편", "불안", "산소", "약물", "치료",
+        "협조", "진행해도 될까요", "괜찮으실까요"
+    ]
+    if st.session_state.labs_shown and not st.session_state.interaction_completed and has_any(text, interaction_keywords):
+        return "interaction_goal_setting"
+
+    # 중재 설명: 처방 확인 후 누적 인식
+    intervention_explain_keywords = [
+        "산소", "o2", "o₂", "약", "약물", "니트로", "니트로글리세린",
+        "ntg", "아스피린", "aspirin", "통증", "호흡", "숨쉬기",
+        "불편", "어지럽", "진행해도 될까요", "괜찮으실까요", "협조"
+    ]
+    if st.session_state.order_shown and not st.session_state.intervention_explained and has_any(text, intervention_explain_keywords):
+        return "intervention_explanation"
+
+    # 활력징후 확인
+    vitals_keywords = [
+        "활력징후", "바이탈", "v/s", "vs", "혈압", "bp", "맥박", "pr",
+        "호흡수", "rr", "산소포화도", "spo2", "saturation", "세츄", "체온", "bt"
+    ]
+    vitals_action_keywords = [
+        "확인", "측정", "체크", "알려줘", "보여줘", "수치", "현재", "몇", "결과"
+    ]
+    history_exclusion_keywords = [
+        "고혈압", "혈압약", "혈압 약", "고혈압 진단",
+        "고혈압 있으", "고혈압 앓", "혈압약 복용"
+    ]
+    if (
+        has_any(text, vitals_keywords)
+        and has_any(text, vitals_action_keywords)
+        and not has_any(text, history_exclusion_keywords)
+    ):
+        return "vitals"
+
+    # 통증 및 증상 사정
     pain_keywords = [
         "통증", "흉통", "가슴 답답", "가슴이 답답", "가슴", "쥐어짜는", "꽉 쥐어짜는",
-        "어디", "어디서부터", "위치", "어떻게", "양상", "느낌", "언제", "언제부터", "시작",
-        "지속", "얼마나 지속", "통증 강도", "통증점수", "통증 점수", "몇 점", "1-10", "nrs", "통증척도",
-        "방사통", "방사", "퍼지", "턱", "왼쪽 어깨", "어깨", "동반 증상", "다른 증상",
-        "숨참", "숨 참", "호흡곤란", "숨이", "숨", "식은땀", "불안 정도", "불안", "두려", "무섭", "아프", "답답",
+        "어디", "어디서부터", "위치", "어떻게", "양상", "느낌", "언제", "언제부터",
+        "시작", "지속", "얼마나 지속", "통증 강도", "통증점수", "통증 점수",
+        "몇 점", "1-10", "nrs", "통증척도", "방사통", "방사", "퍼지",
+        "턱", "왼쪽 어깨", "어깨", "동반 증상", "다른 증상",
+        "숨참", "숨 참", "호흡곤란", "숨이", "숨", "식은땀",
+        "불안 정도", "불안", "두려", "무섭", "아프", "답답"
     ]
     if has_any(text, pain_keywords):
         return "pain_assessment"
 
-    # ------------------------------------------------------------
-    # 13. 치료적 의사소통: 안심·공감·위로·정서적 지지
-    # ------------------------------------------------------------
     therapeutic_keywords = [
-        "괜찮", "도와", "안심", "안정", "걱정하지", "걱정", "옆에", "진정", "함께",
-        "공감", "위로", "정신적 지지", "계속 살피고 있습니다", "옆에 있겠습니다", "불안하지 않게",
+        "괜찮", "도와", "안심", "안정", "걱정하지", "걱정", "옆에",
+        "진정", "함께", "공감", "위로", "계속 살피고 있습니다", "옆에 있겠습니다"
     ]
     if has_any(text, therapeutic_keywords):
         return "therapeutic"
@@ -490,33 +606,22 @@ def classify_input(user_text: str) -> str:
 
 
 # ------------------------------------------------------------
-# 8. 응답 생성: 환자 반응과 시스템 반응 분리
+# 11. 응답 생성
 # ------------------------------------------------------------
 def get_response(user_text: str) -> List[Dict[str, str]]:
     category = classify_input(user_text)
     responses: List[Dict[str, str]] = []
 
     if category == "intro":
-        mark_checklist("1. 지각: 초기 접촉 및 자기소개")
-        mark_checklist("2. 지각: 주호소 확인")
-        mark_checklist("7. 지각: 불안·두려움 확인")
+        st.session_state.intro_done = True
+        mark_checklist("1. 지각: 초기 접촉 및 주호소 확인")
         responses.append(patient_message(
-            "네… 김심근입니다. 가슴이 한가운데가 너무 꽉 조여요… 숨도 차고 식은땀이 나요. 저 이러다 큰일 나는 거 아니죠?"
+            "네… 김심근입니다. 가슴 한가운데가 너무 꽉 조여요… 숨도 차고 식은땀이 나요. 저 이러다 큰일 나는 거 아니죠?"
         ))
 
     elif category == "pain_assessment":
-        mark_checklist("2. 지각: 주호소 확인")
-        if has_any(user_text, ["어디", "위치", "어디서부터", "어떻게", "양상", "느낌", "언제", "언제부터", "시작", "지속", "얼마나"]):
-            mark_checklist("3. 지각: 통증 위치·양상·시작 시점 확인")
-        if has_any(user_text, ["몇 점", "nrs", "점수", "강도", "1-10", "통증척도"]):
-            mark_checklist("4. 지각: 통증 강도(NRS) 확인")
-        if has_any(user_text, ["방사", "퍼지", "턱", "어깨", "왼쪽 어깨"]):
-            mark_checklist("5. 지각: 방사통 확인")
-        if has_any(user_text, ["숨", "숨참", "호흡곤란", "식은땀", "동반", "다른 증상"]):
-            mark_checklist("6. 지각: 동반 증상 확인")
-        if has_any(user_text, ["불안", "무섭", "걱정", "두려", "안심", "도와"]):
-            mark_checklist("7. 지각: 불안·두려움 확인")
-
+        st.session_state.pain_symptom_done = True
+        mark_checklist("2. 지각: 통증 및 동반 증상 사정")
         if has_any(user_text, ["어디", "위치", "어디서부터"]):
             fact = f"{PATIENT_INFO['pain_location']}이 아프고, {PATIENT_INFO['radiation']}까지 퍼진다."
         elif has_any(user_text, ["방사", "퍼지", "턱", "어깨", "왼쪽 어깨"]):
@@ -527,7 +632,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             fact = PATIENT_INFO["onset"]
         elif has_any(user_text, ["몇 점", "nrs", "점수", "강도", "1-10", "통증척도"]):
             fact = PATIENT_INFO["pain_score_initial"]
-        elif has_any(user_text, ["숨", "숨참", "호흡곤란", "식은땀", "동반", "다른 증상", "불안 정도"]):
+        elif has_any(user_text, ["숨", "숨참", "호흡곤란", "식은땀", "동반", "다른 증상", "불안"]):
             fact = PATIENT_INFO["associated_symptoms"]
         else:
             fact = f"{PATIENT_INFO['chief_complaint']} 통증은 {PATIENT_INFO['pain_score_initial']} 정도이다."
@@ -535,7 +640,8 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 
     elif category == "vitals":
         st.session_state.vitals_shown = True
-        mark_checklist("8. 지각: 활력징후 확인")
+        st.session_state.vitals_done = True
+        mark_checklist("3. 지각: 활력징후 확인")
         responses.append(system_message(
             "초기 활력징후\n"
             f"- BP: {VITAL_SIGNS['BP']}\n"
@@ -547,69 +653,78 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         responses.append(patient_message("혈압이랑 맥박이 많이 높은 거예요…? 가슴도 계속 답답한데, 저 지금 위험한 상태인가요?"))
 
     elif category == "family_history":
-        mark_checklist("9. 지각: 병력·복용약·위험요인 확인")
-        fact = PATIENT_INFO["family_history"]
-        responses.append(patient_message(naturalize_with_openai(user_text, fact, tone="불안하지만 질문에는 답하는 상태")))
+        st.session_state.history_risk_done = True
+        mark_checklist("4. 지각: 병력 및 위험요인 사정")
+        responses.append(patient_message(naturalize_with_openai(user_text, PATIENT_INFO["family_history"], tone="불안하지만 질문에는 답하는 상태")))
 
     elif category == "history":
-        mark_checklist("9. 지각: 병력·복용약·위험요인 확인")
+        st.session_state.history_risk_done = True
+        mark_checklist("4. 지각: 병력 및 위험요인 사정")
         if "알레르기" in user_text:
             fact = PATIENT_INFO["allergy"]
-        elif has_any(user_text, ["약", "복용", "복용약물", "고혈압 약"]):
+        elif has_any(user_text, ["약", "복용", "복용약물", "혈압약"]):
             fact = PATIENT_INFO["medication"]
         elif has_any(user_text, ["담배", "흡연"]):
             fact = PATIENT_INFO["smoking"]
         elif has_any(user_text, ["음주", "술"]):
             fact = PATIENT_INFO["alcohol"]
-        elif has_any(user_text, ["생활습관", "식습관"]):
+        elif has_any(user_text, ["식습관", "생활습관"]):
             fact = PATIENT_INFO["diet"]
-        elif has_any(user_text, ["운동", "운동 부족"]):
+        elif has_any(user_text, ["운동"]):
             fact = PATIENT_INFO["exercise"]
         elif has_any(user_text, ["당뇨"]):
             fact = PATIENT_INFO["diabetes"]
         elif has_any(user_text, ["고지혈증"]):
             fact = PATIENT_INFO["hyperlipidemia"]
-        elif has_any(user_text, ["심장질환", "심질환", "고혈압", "기저질환", "과거력", "병력"]):
-            fact = f"{PATIENT_INFO['history']}. {PATIENT_INFO['medication']}"
         else:
             fact = f"{PATIENT_INFO['history']}. {PATIENT_INFO['medication']}"
         responses.append(patient_message(naturalize_with_openai(user_text, fact, tone="불안하지만 질문에는 답하는 상태")))
 
     elif category == "ami_judgment":
-        mark_checklist("10. 판단: 수집 자료를 바탕으로 AMI 가능성 인식")
-        mark_checklist("11. 판단: ECG와 심근효소 검사 필요성 인식")
+        st.session_state.ami_judged = True
+        mark_checklist("5. 판단: AMI 의심 상황 판단 및 검사 필요성 인식")
         responses.append(patient_message(
             "심장 문제일 수도 있다는 건가요…? 너무 무서워요. 그래도 정확히 확인하려면 심전도랑 피검사를 해야 한다는 말씀이시죠?"
         ))
         responses.append(system_message(
-            "AMI 가능성 인식이 확인되었습니다. 다음 단계로 심전도와 심근효소 검사의 필요성을 환자에게 설명하세요."
+            "AMI 가능성 인식이 확인되었습니다. 심전도와 혈액검사의 필요성을 환자에게 설명하고 협조를 구하세요."
         ))
 
     elif category == "exam_explanation":
-        st.session_state.exam_explained = True
-        st.session_state.cooperation_formed = True
-        mark_checklist("12. 행위: 심전도 검사 필요성 설명")
-        mark_checklist("13. 행위: 혈액검사 필요성 설명")
-        mark_checklist("11. 판단: ECG와 심근효소 검사 필요성 인식")
-        mark_checklist("15. 반응: 검사 협조 형성")
-        mark_checklist("14. 반응: 환자의 이해 확인")
-        mark_checklist("7. 지각: 불안·두려움 확인")
-        responses.append(patient_message(
-            "아… 심장 상태를 확인하려고 심전도랑 피검사를 하는 거군요. 무섭긴 한데, 설명을 들으니까 해야 할 것 같아요… 빨리 해주세요."
-        ))
+        updates = update_exam_explanation_state(user_text)
+
+        if st.session_state.exam_explained:
+            responses.append(patient_message(
+                "아… 심장 상태를 확인하려고 심전도랑 피검사를 하는 거군요. 무섭긴 한데, 설명을 들으니까 해야 할 것 같아요… 빨리 해주세요."
+            ))
+            responses.append(system_message("검사 설명 및 협조 형성이 완료되었습니다. 검사결과를 확인할 수 있습니다."))
+        else:
+            missing = []
+            if not st.session_state.ecg_explained:
+                missing.append("심전도 검사 설명")
+            if not st.session_state.blood_test_explained:
+                missing.append("혈액검사 설명")
+            if not st.session_state.exam_cooperation_requested:
+                missing.append("검사 협조 요청")
+            responses.append(patient_message(
+                "네… 그런데 어떤 검사인지, 왜 해야 하는지 조금 더 설명해 주시면 안심하고 협조할 수 있을 것 같아요."
+            ))
+            responses.append(system_message(
+                "현재 인식된 내용: "
+                + (", ".join(updates) if updates else "없음")
+                + "\n추가로 필요한 내용: "
+                + ", ".join(missing)
+            ))
 
     elif category == "labs":
         if not st.session_state.exam_explained:
             responses.append(patient_message(
                 "선생님… 무슨 검사를 하는 거예요? 왜 해야 하는지 먼저 설명해주시면 좋겠어요. 너무 불안해서요…"
             ))
-            responses.append(system_message("검사결과는 학생이 검사 필요성을 설명하고 환자의 협조를 얻은 후 확인할 수 있습니다."))
+            responses.append(system_message("검사결과는 학생이 심전도·혈액검사 필요성을 설명하고 환자의 협조를 얻은 후 확인할 수 있습니다."))
         else:
             st.session_state.labs_shown = True
-            mark_checklist("16. 상호작용: ECG 결과 확인")
-            mark_checklist("17. 상호작용: Troponin I 및 CK-MB 결과 확인")
-            mark_checklist("18. 상호작용: 검사결과를 바탕으로 환자 문제 구체화")
-            mark_checklist("10. 판단: 수집 자료를 바탕으로 AMI 가능성 인식")
+            mark_checklist("7. 상호작용: 검사결과 기반 문제 구체화")
             responses.append(system_message(
                 "검사결과\n"
                 f"- ECG: {LAB_RESULTS['ECG']}\n"
@@ -618,50 +733,110 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             ))
             responses.append(patient_message("검사 결과가 안 좋은 건가요…? 아직 가슴이 답답하고 숨도 좀 차서 너무 걱정돼요."))
 
+    elif category == "interaction_goal_setting":
+        if not st.session_state.labs_shown:
+            responses.append(system_message(
+                "상호작용 단계는 검사결과 확인 후 진행합니다. 먼저 검사결과를 확인하세요."
+            ))
+        else:
+            updates = update_interaction_state(user_text)
+
+            if st.session_state.interaction_completed:
+                responses.append(patient_message(
+                    "네… 지금 제일 힘든 게 가슴 통증이랑 숨찬 거, 그리고 너무 무서운 거예요. "
+                    "통증이 줄고 숨쉬기가 편해질 수 있다면 말씀하신 방법에 협조할게요…"
+                ))
+                responses.append(system_message(
+                    "상호작용 단계가 완료되었습니다. 다음 단계로 SBAR 보고를 진행하세요."
+                ))
+            else:
+                missing = []
+                if not st.session_state.problem_identified:
+                    missing.append("환자 문제 확인")
+                if not st.session_state.goal_set:
+                    missing.append("공동 목표 설정")
+                if not st.session_state.means_explained:
+                    missing.append("목표달성 방법 제시")
+                if not st.session_state.agreement_obtained:
+                    missing.append("방법 합의/협조 확인")
+                responses.append(patient_message(
+                    "네… 제가 지금 무엇이 문제인지, 어떤 목표로 치료를 받게 되는지 조금 더 알고 싶어요."
+                ))
+                responses.append(system_message(
+                    "현재 인식된 내용: "
+                    + (", ".join(updates) if updates else "없음")
+                    + "\n추가로 필요한 내용: "
+                    + ", ".join(missing)
+                ))
+
     elif category == "report_intro":
-        responses.append(patient_message("네… 의사 선생님께 빨리 말씀드려 주세요. 가슴이 계속 답답해서 너무 무서워요…"))
-        responses.append(system_message("SBAR 형식으로 환자 상태, 배경, 사정결과, 제안을 포함하여 보고하면 처방이 제시됩니다."))
+        if not st.session_state.interaction_completed:
+            responses.append(system_message(
+                "SBAR 보고 전, 환자와 현재 문제·공동 목표·목표달성 방법에 대해 먼저 공유하고 합의하세요."
+            ))
+        else:
+            responses.append(patient_message("네… 의사 선생님께 빨리 말씀드려 주세요. 가슴이 계속 답답해서 너무 무서워요…"))
+            responses.append(system_message("SBAR 형식으로 환자 상태, 배경, 사정결과, 제안을 포함하여 보고하면 처방이 제시됩니다."))
 
     elif category == "report_detail":
-        st.session_state.sbar_reported = True
-        st.session_state.order_shown = True
-        mark_checklist("20. 교류작용: SBAR 보고 수행")
-        mark_checklist("21. 교류작용: 의사 처방 확인")
-        responses.append(system_message(
-            "SBAR 보고가 완료되었습니다. 의사 처방이 제시됩니다.\n"
-            + "\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
-        ))
+        if not st.session_state.interaction_completed:
+            responses.append(system_message(
+                "SBAR 보고 전 상호작용 단계를 완료하세요: 문제 확인, 공동 목표 설정, 방법 제시, 협조 합의가 필요합니다."
+            ))
+        else:
+            st.session_state.sbar_reported = True
+            st.session_state.order_shown = True
+            mark_checklist("9. 교류작용: SBAR 보고 및 처방 확인")
+            responses.append(system_message(
+                "SBAR 보고가 완료되었습니다. 의사 처방이 제시됩니다.\n"
+                + "\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
+            ))
 
     elif category == "intervention_explanation":
         if not st.session_state.order_shown:
             responses.append(system_message("중재 설명 전 SBAR 보고를 완료하고 의사 처방을 먼저 확인해야 합니다."))
         else:
-            st.session_state.intervention_explained = True
-            st.session_state.cooperation_formed = True
-            mark_checklist("22. 교류작용: 산소요법 필요성 설명")
-            mark_checklist("23. 교류작용: NTG 투여 필요성 설명")
-            mark_checklist("24. 교류작용: Aspirin 투여 필요성 설명")
-            mark_checklist("19. 상호작용: 흉통 완화·호흡곤란 감소·불안 감소 목표 공유")
-            mark_checklist("25. 교류작용: 중재 전 환자 협조 획득")
-            mark_checklist("7. 지각: 불안·두려움 확인")
-            mark_checklist("14. 반응: 환자의 이해 확인")
-            responses.append(patient_message(
-                "네… 산소랑 약이 왜 필요한지는 알겠어요. 아직 무섭긴 한데, 통증이 줄 수 있다면 해주세요…"
-            ))
+            updates = update_intervention_explanation_state(user_text)
+
+            if st.session_state.intervention_explained:
+                st.session_state.cooperation_formed = True
+                mark_checklist("10. 교류작용: 중재 설명 및 중재 수행")
+                responses.append(patient_message(
+                    "네… 산소랑 약이 왜 필요한지는 알겠어요. 아직 무섭긴 한데, 통증이 줄 수 있다면 해주세요…"
+                ))
+                responses.append(system_message(
+                    "중재 설명 및 협조 형성이 완료되었습니다. 이제 처방 기반 중재를 수행할 수 있습니다."
+                ))
+            else:
+                missing = []
+                if not (st.session_state.oxygen_explained or st.session_state.medication_explained):
+                    missing.append("산소 또는 약물 설명")
+                if not st.session_state.intervention_purpose_explained:
+                    missing.append("중재 목적 설명")
+                if not st.session_state.intervention_cooperation_requested:
+                    missing.append("중재 협조 요청")
+                responses.append(patient_message(
+                    "선생님… 산소랑 약이 왜 필요한지, 진행해도 되는 건지 조금 더 설명해 주세요."
+                ))
+                responses.append(system_message(
+                    "현재 인식된 내용: "
+                    + (", ".join(updates) if updates else "없음")
+                    + "\n추가로 필요한 내용: "
+                    + ", ".join(missing)
+                ))
 
     elif category == "intervention":
         if not st.session_state.order_shown:
             responses.append(system_message("아직 의사 처방이 제시되지 않았습니다. SBAR 보고 후 처방을 확인하세요."))
         elif not st.session_state.intervention_explained:
             responses.append(patient_message(
-                "선생님… 산소랑 약을 왜 해야 하는 건지 먼저 설명해주실 수 있을까요? 무섭지만 설명 들으면 협조할게요…"
+                "선생님… 산소랑 약을 왜 해야 하는지 먼저 설명해주실 수 있을까요? 무섭지만 설명 들으면 협조할게요…"
             ))
-            responses.append(system_message("중재 수행 전 산소요법과 약물 투여의 필요성을 환자에게 설명해야 합니다."))
+            responses.append(system_message("중재 수행 전 산소 또는 약물 설명, 중재 목적 설명, 협조 확인이 필요합니다."))
         else:
             st.session_state.intervention_done = True
             st.session_state.cooperation_formed = True
-            mark_checklist("26. 교류작용: 처방 기반 중재 수행")
-            mark_checklist("25. 교류작용: 중재 전 환자 협조 획득")
+            mark_checklist("10. 교류작용: 중재 설명 및 중재 수행")
             responses.append(system_message(
                 "처방 기반 중재가 수행되었습니다.\n"
                 f"- {DOCTOR_ORDER[0]}\n"
@@ -675,10 +850,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
     elif category == "reassessment":
         st.session_state.reassessment_done = True
         st.session_state.goal_achieved = True
-        mark_checklist("27. 목표달성: 중재 후 통증 재사정")
-        mark_checklist("28. 목표달성: 중재 후 호흡곤란 재사정")
-        mark_checklist("29. 목표달성: 중재 후 불안 재사정")
-        mark_checklist("30. 목표달성: 통증·호흡곤란·불안 완화 확인")
+        mark_checklist("11. 목표달성: 중재 후 재사정 및 목표달성 확인")
         if has_any(user_text, ["통증", "몇 점", "nrs"]):
             responses.append(patient_message("아까보다는 훨씬 나아요… 지금은 한 3점 정도인 것 같아요. 그래도 아직 조금 답답하긴 해요."))
         elif has_any(user_text, ["숨", "호흡"]):
@@ -689,12 +861,9 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             responses.append(patient_message(POST_INTERVENTION_STATUS["message"]))
 
     elif category == "closing_therapeutic":
-        mark_checklist("31. 목표달성: 상태 변화 시 즉시 알리도록 교육")
-        mark_checklist("7. 지각: 불안·두려움 확인")
         responses.append(patient_message("네… 다시 아프거나 숨이 차면 바로 말씀드릴게요. 옆에서 봐주시니까 조금 안심돼요…"))
 
     elif category == "therapeutic":
-        mark_checklist("7. 지각: 불안·두려움 확인")
         responses.append(patient_message("그렇게 말씀해주시니까 조금은 안심돼요… 그래도 가슴이 계속 답답해서 아직 무서워요."))
 
     else:
@@ -705,13 +874,34 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 
 
 # ------------------------------------------------------------
-# 9. 세션 초기화 및 사이드바
+# 12. 세션 초기화 및 사이드바
 # ------------------------------------------------------------
 init_state()
 
 st.sidebar.header("📋 진행 상태")
 for key, value in st.session_state.checklist.items():
     st.sidebar.write(f"{'✅' if value else '⬜'} {key}")
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔎 세부 진행 상태")
+
+with st.sidebar.expander("검사 설명"):
+    st.write(f"{'✅' if st.session_state.ecg_explained else '⬜'} 심전도 검사 설명")
+    st.write(f"{'✅' if st.session_state.blood_test_explained else '⬜'} 혈액검사 설명")
+    st.write(f"{'✅' if st.session_state.exam_cooperation_requested else '⬜'} 검사 협조 요청")
+
+with st.sidebar.expander("상호작용"):
+    st.write(f"{'✅' if st.session_state.problem_identified else '⬜'} 환자 문제 확인")
+    st.write(f"{'✅' if st.session_state.goal_set else '⬜'} 공동 목표 설정")
+    st.write(f"{'✅' if st.session_state.means_explained else '⬜'} 목표달성 방법 제시")
+    st.write(f"{'✅' if st.session_state.agreement_obtained else '⬜'} 방법 합의/협조 확인")
+
+with st.sidebar.expander("중재 설명"):
+    st.write(f"{'✅' if st.session_state.oxygen_explained else '⬜'} 산소요법 설명")
+    st.write(f"{'✅' if st.session_state.medication_explained else '⬜'} 약물투여 설명")
+    st.write(f"{'✅' if st.session_state.intervention_purpose_explained else '⬜'} 중재 목적 설명")
+    st.write(f"{'✅' if st.session_state.side_effect_guidance_given else '⬜'} 이상반응/불편감 안내")
+    st.write(f"{'✅' if st.session_state.intervention_cooperation_requested else '⬜'} 중재 협조 요청")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🎯 목표 달성 지표")
@@ -727,9 +917,10 @@ st.sidebar.write(f"직업: {PATIENT_INFO['job']}")
 st.sidebar.write(f"입원 경로: {PATIENT_INFO['route']}")
 
 # ------------------------------------------------------------
-# 10. 시작 / 초기화 버튼
+# 13. 시작 / 초기화 버튼
 # ------------------------------------------------------------
 col1, col2 = st.columns(2)
+
 with col1:
     if st.button("▶ 시뮬레이션 시작"):
         reset_simulation()
@@ -745,7 +936,7 @@ with col2:
         st.rerun()
 
 # ------------------------------------------------------------
-# 11. 시뮬레이션 대화 화면
+# 14. 시뮬레이션 대화 화면
 # ------------------------------------------------------------
 if st.session_state.started:
     st.subheader("💬 시뮬레이션 대화")
@@ -762,7 +953,7 @@ if st.session_state.started and not st.session_state.ended:
         st.rerun()
 
 # ------------------------------------------------------------
-# 12. 디브리핑
+# 15. 디브리핑
 # ------------------------------------------------------------
 if st.session_state.started:
     st.markdown("---")
@@ -773,7 +964,7 @@ if st.session_state.started:
         if not ready_for_debriefing:
             st.info("중재 후 재사정과 목표달성 확인까지 진행한 후 디브리핑을 시작하는 것을 권장합니다.")
         if st.button("디브리핑 보기", disabled=not ready_for_debriefing):
-            mark_checklist("32. 성찰: 디브리핑 참여")
+            mark_checklist("12. 성찰: 디브리핑")
             st.session_state.ended = True
             st.session_state.show_debriefing = True
             st.rerun()
@@ -815,10 +1006,11 @@ if st.session_state.started:
             st.rerun()
 
 # ------------------------------------------------------------
-# 13. 하단 안내
+# 16. 하단 안내
 # ------------------------------------------------------------
 st.markdown("---")
 st.caption(
-    "본 프로토타입은 King의 목표달성이론 중 지각, 판단, 행위, 반응, 상호작용, 교류작용, 목표달성 과정을 "
-    "AMI 챗봇 가상환자 시뮬레이션 흐름에 반영한 연구용 예시입니다."
+    "본 프로토타입은 King의 목표달성이론 중 지각 → 판단 → 행위 → 반응 → 상호작용 → 교류작용 → 목표달성 과정을 한 방향으로 "
+    "AMI 챗봇 가상환자 시뮬레이션 흐름에 반영한 연구용 예시입니다. "
+    "검사 설명, 상호작용, 중재 설명은 학생의 짧은 발화를 누적하여 인식하도록 설계되었습니다."
 )
