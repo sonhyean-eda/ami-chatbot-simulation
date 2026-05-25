@@ -289,17 +289,25 @@ def update_exam_explanation_state(text: str) -> List[str]:
     """심전도 설명, 혈액검사 설명, 협조 요청을 누적 인식한다."""
     updates = []
 
+    # 12명 사전 트리거 자료 반영:
+    # 심전도/혈액검사 설명, 검사 필요성, 환자 협조 유도 표현을 폭넓게 인식한다.
     ecg_keywords = [
         "심전도", "ecg", "ekg", "12유도", "12-lead",
-        "심장 전기", "전기적 변화", "심장 상태", "심장 확인"
+        "심장 전기", "전기적 변화", "심장 상태", "심장 확인",
+        "심장 상태 확인", "정확한 상태 파악", "상태 확인"
     ]
     blood_keywords = [
         "혈액검사", "혈액 검사", "피검사", "채혈", "심근효소",
-        "트로포닌", "troponin", "ck-mb", "ckmb", "심장근육 손상", "심근 손상"
+        "트로포닌", "troponin", "ck-mb", "ckmb",
+        "심장근육 손상", "심근 손상", "관련 수치"
     ]
     cooperation_keywords = [
-        "협조", "동의", "괜찮으실까요", "진행해도 될까요",
-        "검사해도 될까요", "검사하겠습니다", "진행하겠습니다"
+        "협조", "협조 요청", "협조해 주실 수", "협조해주시겠",
+        "동의", "괜찮을까요", "괜찮으실까요",
+        "진행해도", "진행해도 될까요", "검사해도 될까요",
+        "검사하겠습니다", "검사를 진행", "진행하겠습니다",
+        "알기 쉽게", "알아듣기 쉽게", "이해하기 쉽게",
+        "납득할 수 있도록", "불안 완화"
     ]
 
     if has_any(text, ecg_keywords):
@@ -328,26 +336,37 @@ def update_interaction_state(text: str) -> List[str]:
     """문제 확인, 목표 설정, 방법 제시, 합의/협조 확인을 누적 인식한다."""
     updates = []
 
+    # 12명 사전 트리거 자료 + King 상호작용 4요소 반영
     problem_keywords = [
-        "문제", "가장 힘든", "가장 큰 문제", "가슴 통증", "흉통",
-        "숨찬", "호흡곤란", "불안", "답답", "검사결과", "검사 결과"
+        "문제", "현재 문제", "가장 힘든", "가장 큰 문제",
+        "가슴 통증", "흉통", "가슴 답답", "답답",
+        "숨찬", "숨참", "호흡곤란", "불안", "불안 정도",
+        "검사결과", "검사 결과", "결과 토대로", "환자 상태", "상태 판단",
+        "의미있는 자료", "의미 있는 자료"
     ]
     goal_keywords = [
-        "목표", "통증을 줄", "통증 완화", "숨쉬기 편", "숨 쉬기 편",
-        "호흡을 편", "불안을 줄", "불안 완화", "안정"
+        "목표", "공동 목표", "함께 목표",
+        "통증을 줄", "통증 감소", "통증 완화", "흉통 완화",
+        "숨쉬기 편", "숨 쉬기 편", "호흡을 편", "호흡곤란 완화",
+        "불안을 줄", "불안 완화", "불안 감소", "안정"
     ]
     means_keywords = [
-        "이를 위해", "방법", "산소", "약물", "약", "니트로",
-        "ntg", "아스피린", "aspirin", "심전도", "처치", "중재", "치료"
+        "이를 위해", "방법", "필요한 이유", "다음 조치", "우선 조치",
+        "처치 필요", "산소", "산소요법", "산소 공급", "산소공급",
+        "약물", "약", "약물 치료", "약물 투여", "약물 작용",
+        "니트로", "니트로글리세린", "ntg",
+        "아스피린", "aspirin", "아스피린 중재",
+        "심전도", "처치", "중재", "치료", "진행", "시행", "적용"
     ]
     agreement_keywords = [
-        "협조", "협조해 주실 수", "협조해주시겠", "협조해 주시겠",
+        "협조", "환자 협조", "협조 요청",
+        "협조해 주실 수", "협조해주시겠", "협조해 주시겠",
         "치료에 협조", "방법에 협조",
         "동의", "동의하시", "동의하시면",
         "괜찮을까요", "괜찮으실까요",
         "진행해도", "진행해도 괜찮", "진행해도 될까요",
         "해도 될까요", "이 방법으로", "이렇게 진행",
-        "함께", "같이"
+        "이해되도록", "함께", "같이"
     ]
 
     if has_any(text, problem_keywords):
@@ -363,15 +382,15 @@ def update_interaction_state(text: str) -> List[str]:
         st.session_state.agreement_obtained = True
         updates.append("방법 합의/협조 확인")
 
-    interaction_count = count_true([
-        st.session_state.problem_identified,
-        st.session_state.goal_set,
-        st.session_state.means_explained,
-        st.session_state.agreement_obtained,
-    ])
-
-    # 4요소 중 3개 이상이면 상호작용 완료로 인정
-    if interaction_count >= 3:
+    # King의 목표달성이론에서 상호작용은 문제 확인, 공동 목표 설정,
+    # 목표달성 방법 제시, 방법 합의/협조 확인이 모두 포함되어야 하므로
+    # 4요소가 모두 충족될 때 상호작용 완료로 인정한다.
+    if (
+        st.session_state.problem_identified
+        and st.session_state.goal_set
+        and st.session_state.means_explained
+        and st.session_state.agreement_obtained
+    ):
         st.session_state.interaction_completed = True
         st.session_state.cooperation_formed = True
         mark_checklist("8. 상호작용: 공동 목표 설정 및 목표달성 방법 합의")
@@ -383,21 +402,27 @@ def update_intervention_explanation_state(text: str) -> List[str]:
     """산소, 약물, 목적, 이상반응 안내, 협조 요청을 누적 인식한다."""
     updates = []
 
+    # 12명 사전 트리거 자료 반영: 중재 필요성, 산소요법, 약물투여,
+    # 약물 작용, 부작용 및 환자 협조 표현을 폭넓게 인식한다.
     oxygen_keywords = [
-        "산소", "o2", "o₂", "비강캐뉼라", "비강 캐뉼라",
-        "숨쉬기", "숨 쉬기", "호흡"
+        "중재", "중재 필요성", "산소", "산소요법", "o2", "o₂",
+        "비강캐뉼라", "비강 캐뉼라", "산소 공급", "산소공급",
+        "숨쉬기", "숨 쉬기", "호흡", "혈류공급", "혈류 공급"
     ]
     medication_keywords = [
-        "약", "약물", "니트로", "니트로글리세린", "ntg",
-        "아스피린", "aspirin", "투여", "복용"
+        "약", "약물", "약물 투여", "약물 작용",
+        "니트로", "니트로글리세린", "ntg",
+        "아스피린", "aspirin", "아스피린 중재",
+        "투여", "복용", "혈관확장", "혈관 확장"
     ]
     purpose_keywords = [
-        "통증", "흉통", "숨쉬기", "숨 쉬기", "호흡곤란", "완화",
-        "줄", "도움", "편하게", "혈전", "예방", "심장 부담"
+        "필요한 이유", "통증", "흉통", "통증 감소", "통증 완화",
+        "숨쉬기", "숨 쉬기", "호흡곤란", "완화",
+        "줄", "도움", "편하게", "혈전", "혈전 예방", "예방", "심장 부담"
     ]
     side_effect_keywords = [
-        "어지럽", "불편", "이상", "부작용", "말씀", "알려",
-        "바로 말", "불편하면"
+        "어지럽", "불편", "불편감", "이상", "부작용",
+        "말씀", "알려", "바로 말", "불편하면", "불편하면 말씀"
     ]
     cooperation_keywords = [
         "협조", "협조해 주실 수", "협조해주시겠", "협조해 주시겠",
@@ -460,8 +485,11 @@ def classify_input(user_text: str) -> str:
     # 재사정은 중재 후에만 우선 인정
     reassess_keywords = [
         "재사정", "다시 확인", "상태를 다시", "치료 후", "중재 후", "처치 후",
-        "지금 통증", "통증은 지금", "몇 점", "nrs", "통증척도",
-        "호흡은", "숨쉬기", "숨 쉬기", "불안은", "어떠세요", "나아졌", "완화"
+        "통증 변화", "통증 감소", "지금 통증", "통증은 지금",
+        "가슴통증 몇 점", "가슴 통증 몇 점", "몇 점", "nrs", "통증척도",
+        "호흡 상태", "호흡은", "숨쉬기", "숨 쉬기", "숨 쉬는 건 괜찮",
+        "숨쉬는 건 괜찮", "불편감", "불안 정도", "불안은",
+        "불안 완화", "불안 감소", "어떠세요", "나아졌", "완화"
     ]
     if st.session_state.intervention_done and has_any(text, reassess_keywords):
         return "reassessment"
@@ -476,13 +504,17 @@ def classify_input(user_text: str) -> str:
 
     # SBAR 상세 보고
     report_action_keywords = [
-        "sbar", "sbar 형식", "보고드립니다", "보고 드립니다",
-        "노티드립니다", "노티 드립니다", "처방 부탁", "처방 요청"
+        "보고", "보고하겠습니다", "sbar", "sbar 형식", "병원 보고 형식",
+        "보고 내용", "보고드립니다", "보고 드립니다",
+        "노티드립니다", "노티 드립니다", "의사에게 보고", "의료진 보고",
+        "의사선생님", "의사 선생님", "처방 부탁", "처방 요청"
     ]
     report_content_keywords = [
-        "김심근", "62세", "흉통", "nrs", "8점", "30분", "고혈압", "흡연",
-        "가족력", "심전도", "ecg", "ekg", "st 상승", "트로포닌",
-        "troponin", "ck-mb", "ckmb", "ami", "급성심근경색", "심근경색", "stemi"
+        "김심근", "62세", "흉통", "흉통 지속", "불안 호소",
+        "nrs", "8점", "30분", "고혈압", "흡연", "가족력",
+        "검사 완료", "심전도", "ecg", "ekg", "ekg상 st 상승",
+        "st 상승", "트로포닌", "troponin", "ck-mb", "ckmb",
+        "ami", "ami 의심", "급성심근경색", "급성심근경색 의심", "심근경색", "stemi"
     ]
     if has_any(text, report_action_keywords) and has_any(text, report_content_keywords):
         return "report_detail"
@@ -496,14 +528,82 @@ def classify_input(user_text: str) -> str:
     if has_any(text, simple_report_keywords):
         return "report_intro"
 
-    # 중재 수행
+    # ------------------------------------------------------------
+    # 단계 우선순위 1: 상호작용
+    # 검사결과 확인 후, SBAR 보고 전에는 "산소/약물/치료/협조" 표현이
+    # 중재 설명이나 중재 수행이 아니라 King의 상호작용 단계
+    # (문제 확인·공동 목표 설정·목표달성 방법 제시·방법 합의)로 우선 분류된다.
+    # ------------------------------------------------------------
+    interaction_keywords = [
+        "문제", "현재 문제", "가장 힘든", "가장 큰 문제",
+        "목표", "공동 목표", "통증을 줄", "통증 완화", "통증 감소",
+        "숨쉬기 편", "숨 쉬기 편", "호흡을 편", "호흡곤란 완화",
+        "불안", "불안 완화", "불안 감소", "안정",
+        "이를 위해", "방법", "다음 조치", "우선 조치",
+        "산소", "산소요법", "산소 공급", "산소공급",
+        "약물", "약", "약물 치료", "약물 투여",
+        "치료", "중재", "처치",
+        "협조", "환자 협조", "협조 요청", "협조해 주실 수", "협조해주시겠",
+        "진행해도", "진행해도 괜찮", "진행해도 될까요",
+        "괜찮을까요", "괜찮으실까요", "동의", "동의하시", "해도 될까요"
+    ]
+    if (
+        st.session_state.labs_shown
+        and not st.session_state.interaction_completed
+        and has_any(text, interaction_keywords)
+    ):
+        return "interaction_goal_setting"
+
+    # ------------------------------------------------------------
+    # 단계 우선순위 2: 중재 설명
+    # SBAR 보고 및 처방 확인 후에는 동일한 "산소/약물/협조" 표현을
+    # 교류작용 단계의 중재 설명으로 분류한다.
+    # ------------------------------------------------------------
+    intervention_explain_keywords = [
+        "중재", "중재 필요성", "산소요법", "산소", "o2", "o₂",
+        "약", "약물", "약물 투여", "약물 작용",
+        "필요한 이유", "니트로", "니트로글리세린", "ntg",
+        "혈관확장", "혈관 확장", "혈류공급", "혈류 공급", "산소공급", "산소 공급",
+        "아스피린", "aspirin", "아스피린 중재", "혈전 예방",
+        "통증", "통증 감소", "호흡", "숨쉬기", "불편", "어지럽", "부작용",
+        "불편하면 말씀", "환자 협조", "이해되도록 설명",
+        "진행해도", "진행해도 괜찮", "진행해도 될까요",
+        "괜찮을까요", "괜찮으실까요", "협조"
+    ]
     intervention_do_keywords = [
         "처방에 따라", "처방대로", "산소 투여", "산소를 투여", "산소 적용", "산소 연결",
+        "산소요법 시행", "산소 요법 시행",
         "비강캐뉼라", "비강 캐뉼라", "ntg 투여", "니트로 투여", "니트로글리세린 투여",
         "아스피린 투여", "약물을 투여", "약물 투여", "12-lead", "12유도",
         "심전도 재확인", "ecg re-check", "ekg re-check"
     ]
-    if has_any(text, intervention_do_keywords):
+
+    if (
+        st.session_state.order_shown
+        and not st.session_state.intervention_explained
+        and (has_any(text, intervention_explain_keywords) or has_any(text, intervention_do_keywords))
+    ):
+        return "intervention_explanation"
+
+    # ------------------------------------------------------------
+    # 단계 우선순위 3: 중재 수행
+    # 실제 처방 기반 중재 수행은 처방 확인(order_shown)과 중재 설명 완료
+    # (intervention_explained)가 모두 끝난 뒤에만 인정한다.
+    # ------------------------------------------------------------
+    if (
+        st.session_state.order_shown
+        and st.session_state.intervention_explained
+        and has_any(text, intervention_do_keywords)
+    ):
+        return "intervention"
+
+    # 처방 전 중재 수행 시도는 get_response()에서 오류 안내가 가능하도록
+    # intervention으로 분류하되, 상호작용 단계가 열려 있는 경우에는 위에서 이미
+    # interaction_goal_setting으로 우선 분류된다.
+    if (
+        not st.session_state.order_shown
+        and has_any(text, intervention_do_keywords)
+    ):
         return "intervention"
 
     # AMI 가능성 판단
@@ -526,60 +626,57 @@ def classify_input(user_text: str) -> str:
         return "family_history"
 
     history_keywords = [
-        "과거력", "병력", "과거 병력", "기저질환",
-        "고혈압", "혈압약", "혈압 약", "당뇨", "고지혈증",
-        "심장질환", "심질환", "진단받", "앓고", "질환 있으",
-        "복용약", "현재 복용 약물", "약 드시", "약 먹",
+        "과거력", "병력", "과거 병력", "조심해야 할 병력", "기저질환",
+        "고혈압", "혈압약", "혈압 약", "고혈압 약",
+        "당뇨", "고지혈증", "심장질환", "심질환",
+        "진단받", "앓고", "질환 있으",
+        "복용약", "복용약물", "현재 복용 약물", "약 드시", "약 먹",
         "담배", "흡연", "음주", "술", "알레르기",
-        "식습관", "생활습관", "운동"
+        "식습관", "생활습관", "운동", "운동 부족", "위험요인"
     ]
     if has_any(text, history_keywords):
         return "history"
 
-    # 검사 설명: 누적 인식
-    exam_keywords = [
-        "심전도", "ecg", "ekg", "12유도", "12-lead",
-        "혈액검사", "혈액 검사", "피검사", "채혈", "심근효소",
-        "트로포닌", "troponin", "ck-mb", "ckmb", "검사", "심장 상태",
-        "전기적 변화", "심장근육 손상", "협조"
-    ]
-    if not st.session_state.exam_explained and has_any(text, exam_keywords):
-        return "exam_explanation"
-
-    # 검사결과 확인: 검사 설명 완료 후 결과 확인
+    # 검사결과 확인/임상 판단: "검사결과"가 "검사 설명"으로 오분류되지 않도록 먼저 분류한다.
     labs_keywords = [
-        "검사결과", "검사 결과", "검사수치", "검사 수치", "결과 확인", "결과 해석",
-        "심전도 결과", "혈액검사 결과", "lab", "트로포닌", "troponin",
-        "ck-mb", "ckmb", "st 상승", "st분절", "st 분절", "stemi"
+        "검사결과", "검사 결과", "검사수치", "검사 수치",
+        "결과 확인", "결과 해석", "결과 토대로",
+        "심전도 결과", "혈액검사 결과", "lab",
+        "환자 상태", "상태 판단", "정상 수치", "정상범위",
+        "비정상 수치", "이상 수치", "의미있는 자료", "의미 있는 자료",
+        "st 상승", "st분절", "st 분절", "troponin", "트로포닌",
+        "ck-mb", "ckmb", "ami", "ami 의심", "급성심근경색",
+        "심근경색", "stemi", "유추되는 질환명", "감별진단",
+        "다른 질병", "다음 조치", "우선 조치", "처치 필요"
     ]
     if has_any(text, labs_keywords):
         return "labs"
 
-    # 상호작용: 검사결과 확인 후 문제·목표·방법·합의 누적 인식
-    interaction_keywords = [
-        "문제", "가장 힘든", "가장 큰 문제", "목표", "통증을 줄",
-        "숨쉬기 편", "호흡을 편", "불안", "산소", "약물", "치료",
-        "협조", "진행해도 될까요", "괜찮으실까요"
+    # 검사 필요성 설명: 누적 인식
+    exam_keywords = [
+        "검사 이유", "검사 필요성", "왜 검사", "왜 해야",
+        "심전도", "ecg", "ekg", "12유도", "12-lead",
+        "혈액검사", "혈액 검사", "피검사", "채혈", "심근효소",
+        "검사", "정확한 상태 파악", "상태 확인", "정밀한 진단",
+        "관련 수치", "전기적 변화", "심장근육 손상",
+        "알기 쉽게", "알아듣기 쉽게", "이해하기 쉽게",
+        "납득할 수 있도록", "협조", "협조 요청", "불안 완화"
     ]
-    if st.session_state.labs_shown and not st.session_state.interaction_completed and has_any(text, interaction_keywords):
-        return "interaction_goal_setting"
+    if not st.session_state.exam_explained and has_any(text, exam_keywords):
+        return "exam_explanation"
 
-    # 중재 설명: 처방 확인 후 누적 인식
-    intervention_explain_keywords = [
-        "산소", "o2", "o₂", "약", "약물", "니트로", "니트로글리세린",
-        "ntg", "아스피린", "aspirin", "통증", "호흡", "숨쉬기",
-        "불편", "어지럽", "진행해도 될까요", "괜찮으실까요", "협조"
-    ]
-    if st.session_state.order_shown and not st.session_state.intervention_explained and has_any(text, intervention_explain_keywords):
-        return "intervention_explanation"
+    # 상호작용/중재 설명/중재 수행 분류는 위 단계 우선순위 블록에서 처리한다.
 
     # 활력징후 확인
     vitals_keywords = [
-        "활력징후", "바이탈", "v/s", "vs", "혈압", "bp", "맥박", "pr",
-        "호흡수", "rr", "산소포화도", "spo2", "saturation", "세츄", "체온", "bt"
+        "활력징후", "바이탈", "현재 바이탈", "정상 바이탈",
+        "v/s", "vs", "혈압", "bp", "맥박", "pr",
+        "호흡수", "rr", "산소포화도", "spo2", "saturation", "세츄", "체온", "bt",
+        "정상 수치", "정상범위", "이상 수치", "비정상 수치", "검사수치", "객관적 자료"
     ]
     vitals_action_keywords = [
-        "확인", "측정", "체크", "알려줘", "보여줘", "수치", "현재", "몇", "결과"
+        "확인", "측정", "측정해", "체크", "알려줘", "보여줘",
+        "수치", "현재", "몇", "결과", "정상", "비정상", "이상"
     ]
     history_exclusion_keywords = [
         "고혈압", "혈압약", "혈압 약", "고혈압 진단",
@@ -606,8 +703,10 @@ def classify_input(user_text: str) -> str:
         return "pain_assessment"
 
     therapeutic_keywords = [
-        "괜찮", "도와", "안심", "안정", "걱정하지", "걱정", "옆에",
-        "진정", "함께", "공감", "위로", "계속 살피고 있습니다", "옆에 있겠습니다"
+        "괜찮", "도와", "안심", "안심 표현", "안정", "안정시키는 말",
+        "걱정하지", "걱정하지 않으셔도 됩니다", "걱정", "옆에",
+        "진정", "함께", "공감", "위로", "정신적 지지",
+        "계속 살피고 있습니다", "옆에 있겠습니다"
     ]
     if has_any(text, therapeutic_keywords):
         return "therapeutic"
