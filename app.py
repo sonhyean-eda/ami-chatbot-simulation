@@ -294,6 +294,79 @@ def count_true(values: List[bool]) -> int:
     return sum(1 for value in values if value)
 
 
+def get_exam_patient_response_for_current_state(updates: List[str]) -> str:
+    """검사 설명 단계에서 현재 누적 상태에 맞는 환자 반응을 반환한다."""
+    if st.session_state.ecg_explained and not st.session_state.blood_test_explained:
+        return "심전도로 심장 상태를 확인한다는 건 이해했어요… 그런데 피검사는 왜 필요한지도 설명해 주실 수 있을까요?"
+    if st.session_state.blood_test_explained and not st.session_state.ecg_explained:
+        return "피검사로 심장근육 손상 여부를 본다는 건 알겠어요… 심전도 검사는 왜 필요한지도 쉽게 설명해 주세요."
+    if (
+        st.session_state.ecg_explained
+        and st.session_state.blood_test_explained
+        and not st.session_state.exam_cooperation_requested
+    ):
+        return "심전도랑 피검사가 왜 필요한지는 이제 조금 이해했어요… 제가 지금 검사에 협조하면 바로 진행할 수 있는 건가요?"
+    if updates:
+        return "조금 이해됐어요… 그래도 제가 안심하고 협조할 수 있도록 빠진 부분을 한 번만 더 쉽게 설명해 주세요."
+    return "선생님… 지금 어떤 검사를 하는 건지 몰라서 더 불안해요. 왜 필요한 검사인지 쉽게 설명해 주시면 협조할게요…"
+
+
+def get_interaction_patient_response_for_current_state(updates: List[str]) -> str:
+    """상호작용 단계에서 현재 누적 상태에 맞는 환자 반응을 반환한다."""
+    if st.session_state.problem_identified and not st.session_state.goal_set:
+        return "네… 제일 힘든 건 가슴 통증이랑 숨찬 거예요. 그럼 지금 치료 목표는 통증을 줄이고 숨쉬기 편하게 하는 건가요?"
+    if st.session_state.goal_set and not st.session_state.problem_identified:
+        return "통증을 줄이고 숨쉬기 편해지는 게 목표라는 건 알겠어요… 그런데 지금 제 상태에서 가장 문제가 되는 게 무엇인지 다시 설명해 주세요."
+    if (
+        st.session_state.problem_identified
+        and st.session_state.goal_set
+        and not st.session_state.means_explained
+    ):
+        return "제 문제와 목표는 이해했어요… 그 목표를 위해 앞으로 어떤 치료나 간호를 받게 되는지 알려주세요."
+    if (
+        st.session_state.problem_identified
+        and st.session_state.goal_set
+        and st.session_state.means_explained
+        and not st.session_state.agreement_obtained
+    ):
+        return "가슴 통증과 숨찬 증상을 줄이기 위해 산소랑 약물치료가 필요하다는 건 이해했어요… 제가 협조하면 바로 진행할 수 있는 건가요?"
+    if updates:
+        return "조금 이해됐어요… 제 문제, 치료 목표, 그리고 앞으로 받을 방법을 한 번만 더 연결해서 설명해 주세요."
+    return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 지금 제 문제와 치료 목표를 쉽게 설명해 주세요…"
+
+
+def get_intervention_patient_response_for_current_state(updates: List[str]) -> str:
+    """중재 설명 단계에서 현재 누적 상태에 맞는 환자 반응을 반환한다."""
+    if st.session_state.oxygen_explained and not st.session_state.medication_explained:
+        return "산소가 숨쉬는 데 도움이 된다는 건 알겠어요… 그런데 약은 어떤 약이고 왜 필요한가요?"
+    if st.session_state.medication_explained and not st.session_state.oxygen_explained:
+        return "약이 가슴 통증을 줄이는 데 도움이 된다는 건 알겠어요… 산소는 왜 필요한지도 쉽게 설명해 주세요."
+    if (
+        st.session_state.oxygen_explained
+        and st.session_state.medication_explained
+        and not st.session_state.intervention_purpose_explained
+    ):
+        return "산소와 약을 한다는 건 알겠어요… 이게 제 가슴 통증이나 숨찬 증상에 어떤 도움이 되는지 설명해 주세요."
+    if (
+        st.session_state.oxygen_explained
+        and st.session_state.medication_explained
+        and st.session_state.intervention_purpose_explained
+        and not st.session_state.side_effect_guidance_given
+    ):
+        return "왜 필요한지는 이해했어요… 그런데 약이나 산소를 하다가 어지럽거나 불편하면 어떻게 해야 하나요?"
+    if (
+        st.session_state.oxygen_explained
+        and st.session_state.medication_explained
+        and st.session_state.intervention_purpose_explained
+        and not st.session_state.intervention_cooperation_requested
+    ):
+        return "불편하면 말씀드리면 되는 것도 알겠어요… 그럼 지금 제가 동의하면 바로 진행하는 건가요?"
+    if updates:
+        return "조금 이해됐어요… 제가 빠뜨린 부분 없이 안심하고 협조할 수 있도록 한 번만 더 쉽게 설명해 주세요."
+    return "선생님… 지금 무엇을 하는 건지 조금 불안해요. 산소와 약이 왜 필요한지 쉽게 설명해 주시면 협조할게요…"
+
+
+
 def doctor_message(text: str) -> Dict[str, str]:
     return {"role": "assistant", "content": f"[의사 처방] {text}"}
 
@@ -505,34 +578,64 @@ def update_exam_explanation_state(text: str) -> List[str]:
     """심전도 설명, 혈액검사 설명, 협조 요청을 누적 인식한다."""
     updates = []
 
-    # 12명 사전 트리거 자료 반영:
-    # 심전도/혈액검사 설명, 검사 필요성, 환자 협조 유도 표현을 폭넓게 인식한다.
-    ecg_keywords = [
+    # 검사명만 나열한 경우와 실제 설명을 구분한다.
+    # 예: "심전도와 혈액검사가 필요합니다"만으로는 검사 설명 완료로 보지 않는다.
+    ecg_name_keywords = [
         "심전도", "ecg", "ekg", "12유도", "12-lead",
-        "심장 전기", "전기적 변화", "심장 상태", "심장 확인",
-        "심장 상태 확인", "정확한 상태 파악", "상태 확인"
+        "electrocardiogram", "electrocardiography"
     ]
-    blood_keywords = [
+    ecg_explain_keywords = [
+        "심장 전기", "전기적 변화", "전기 신호", "전기 활동",
+        "심장 상태", "심장 확인", "심장 상태 확인",
+        "심장 리듬", "심장 박동", "심장의 변화",
+        "heart condition", "heart status", "electrical changes", "electrical activity",
+        "heart rhythm", "heart signal"
+    ]
+
+    blood_name_keywords = [
         "혈액검사", "혈액 검사", "피검사", "채혈", "심근효소",
-        "트로포닌", "troponin", "ck-mb", "ckmb",
-        "심장근육 손상", "심근 손상", "관련 수치"
+        "blood test", "blood work", "cardiac enzyme", "myocardial enzyme"
     ]
+    blood_explain_keywords = [
+        "트로포닌", "troponin", "ck-mb", "ckmb",
+        "심장근육 손상", "심근 손상", "심장 근육 손상",
+        "심근효소 수치", "효소 수치", "관련 수치", "손상 여부",
+        "heart muscle damage", "myocardial damage", "cardiac muscle damage",
+        "enzyme level", "damage to the heart muscle"
+    ]
+
     cooperation_keywords = [
         "협조", "협조 요청", "협조해 주실 수", "협조해주시겠",
         "동의", "괜찮을까요", "괜찮으실까요",
         "진행해도", "진행해도 될까요", "검사해도 될까요",
-        "검사하겠습니다", "검사를 진행", "진행하겠습니다",
-        "알기 쉽게", "알아듣기 쉽게", "이해하기 쉽게",
-        "납득할 수 있도록", "불안 완화"
+        "검사를 진행", "검사 진행", "진행하겠습니다",
+        "설명 들었으면", "이해되셨으면",
+        "cooperate", "cooperation", "agree", "consent", "proceed",
+        "can we proceed", "may i proceed", "is it okay", "okay to proceed"
     ]
 
-    if has_any(text, ecg_keywords):
+    # 심전도는 검사명 + 목적/내용 설명이 함께 들어와야 설명으로 인정한다.
+    if has_any(text, ecg_name_keywords) and has_any(text, ecg_explain_keywords):
         st.session_state.ecg_explained = True
         updates.append("심전도 검사 설명")
-    if has_any(text, blood_keywords):
+
+    # 혈액검사는 검사명 또는 심근효소 표현 + 손상 여부/수치 설명이 들어와야 설명으로 인정한다.
+    if (
+        has_any(text, blood_name_keywords) and has_any(text, blood_explain_keywords)
+    ) or (
+        has_any(text, ["트로포닌", "troponin", "ck-mb", "ckmb", "심근효소", "cardiac enzyme", "myocardial enzyme"])
+        and has_any(text, ["심장근육 손상", "심근 손상", "손상 여부", "수치", "확인",
+                           "heart muscle damage", "damage", "level", "check", "determine"])
+    ):
         st.session_state.blood_test_explained = True
         updates.append("혈액검사 설명")
-    if has_any(text, cooperation_keywords):
+
+    # 검사 참여 확인은 심전도와 혈액검사 설명이 모두 끝난 뒤에만 인정한다.
+    if (
+        st.session_state.ecg_explained
+        and st.session_state.blood_test_explained
+        and has_any(text, cooperation_keywords)
+    ):
         st.session_state.exam_cooperation_requested = True
         updates.append("검사 참여 확인")
 
@@ -618,56 +721,95 @@ def update_intervention_explanation_state(text: str) -> List[str]:
     """산소, 약물, 목적, 이상반응 안내, 협조 요청을 누적 인식한다."""
     updates = []
 
-    # 12명 사전 트리거 자료 반영: 중재 필요성, 산소요법, 약물투여,
-    # 약물 작용, 부작용 및 환자 협조 표현을 폭넓게 인식한다.
-    oxygen_keywords = [
-        "중재", "중재 필요성", "산소", "산소요법", "o2", "o₂",
-        "비강캐뉼라", "비강 캐뉼라", "산소 공급", "산소공급",
-        "숨쉬기", "숨 쉬기", "호흡", "혈류공급", "혈류 공급"
+    # 단어만 포함된 경우와 실제 설명을 구분한다.
+    # 예: "산소를 투여하겠습니다"만으로는 산소요법 설명 완료로 보지 않는다.
+    oxygen_name_keywords = [
+        "산소", "산소요법", "o2", "o₂", "비강캐뉼라", "비강 캐뉼라",
+        "oxygen", "nasal cannula"
     ]
-    medication_keywords = [
-        "약", "약물", "약물 투여", "약물 작용",
-        "니트로", "니트로글리세린", "ntg",
-        "아스피린", "aspirin", "아스피린 중재",
-        "투여", "복용", "혈관확장", "혈관 확장"
+    oxygen_explain_keywords = [
+        "숨쉬기", "숨 쉬기", "호흡", "호흡곤란", "숨찬", "숨 차",
+        "산소 공급", "산소공급", "심장에 산소", "심장 부담", "부담을 줄",
+        "완화", "도움", "편하게",
+        "breathing", "shortness of breath", "supply oxygen", "oxygen supply",
+        "help the heart", "strain on the heart", "relieve", "ease breathing"
     ]
+
+    medication_name_keywords = [
+        "약", "약물", "니트로", "니트로글리세린", "ntg",
+        "아스피린", "aspirin",
+        "medicine", "medication", "drug", "nitroglycerin"
+    ]
+    medication_explain_keywords = [
+        "통증", "흉통", "가슴 통증", "통증 완화", "통증 감소",
+        "혈전", "혈전 예방", "혈전 생성", "혈관확장", "혈관 확장",
+        "줄이는", "줄이는 데", "도움", "예방",
+        "chest pain", "pain", "relieve pain", "reduce pain",
+        "blood clot", "clot", "prevent clot", "reduce clot", "vasodilation",
+        "widen blood vessel", "help reduce"
+    ]
+
     purpose_keywords = [
-        "필요한 이유", "통증", "흉통", "통증 감소", "통증 완화",
-        "숨쉬기", "숨 쉬기", "호흡곤란", "완화",
-        "줄", "도움", "편하게", "혈전", "혈전 예방", "예방", "심장 부담"
+        "통증", "흉통", "가슴 통증", "호흡곤란", "숨쉬기", "숨 쉬기",
+        "완화", "줄", "도움", "심장 부담", "혈전 예방",
+        "chest pain", "shortness of breath", "breathing", "relieve",
+        "reduce", "help", "strain on the heart", "blood clot"
     ]
+
     side_effect_keywords = [
-        "어지럽", "불편", "불편감", "이상", "부작용",
-        "말씀", "알려", "바로 말", "불편하면", "불편하면 말씀"
+        "어지럽", "어지러움", "두통", "불편", "불편감", "이상", "부작용",
+        "통증 악화", "호흡곤란", "숨이 더 차", "말씀", "알려",
+        "바로 말", "바로 말씀", "불편하면", "불편하면 말씀",
+        "dizzy", "dizziness", "headache", "uncomfortable", "discomfort",
+        "side effect", "worsening pain", "difficulty breathing", "tell me",
+        "let me know", "notify", "right away"
     ]
     cooperation_keywords = [
         "협조", "협조해 주실 수", "협조해주시겠", "협조해 주시겠",
-        "치료에 협조", "방법에 협조",
         "동의", "동의하시", "동의하시면",
         "괜찮을까요", "괜찮으실까요",
         "진행해도", "진행해도 괜찮", "진행해도 될까요",
         "해도 될까요", "이 방법으로", "이렇게 진행",
-        "함께", "같이"
+        "cooperate", "cooperation", "agree", "consent", "proceed",
+        "can we proceed", "may i proceed", "is it okay", "okay to proceed"
     ]
 
-    if has_any(text, oxygen_keywords):
+    oxygen_explained_now = has_any(text, oxygen_name_keywords) and has_any(text, oxygen_explain_keywords)
+    medication_explained_now = has_any(text, medication_name_keywords) and has_any(text, medication_explain_keywords)
+
+    if oxygen_explained_now:
         st.session_state.oxygen_explained = True
         updates.append("산소요법 설명")
-    if has_any(text, medication_keywords):
+
+    if medication_explained_now:
         st.session_state.medication_explained = True
         updates.append("약물투여 설명")
-    if has_any(text, purpose_keywords):
+
+    # 중재 목적은 산소 또는 약물 설명과 관련 목적 표현이 포함된 경우에 인정한다.
+    if (oxygen_explained_now or medication_explained_now) and has_any(text, purpose_keywords):
         st.session_state.intervention_purpose_explained = True
         updates.append("중재 목적 설명")
-    if has_any(text, side_effect_keywords):
+
+    # 이상반응/불편감 안내는 산소와 약물 설명이 모두 이루어진 뒤에만 인정한다.
+    if (
+        st.session_state.oxygen_explained
+        and st.session_state.medication_explained
+        and has_any(text, side_effect_keywords)
+    ):
         st.session_state.side_effect_guidance_given = True
         updates.append("이상반응/불편감 안내")
-    if has_any(text, cooperation_keywords):
+
+    # 중재 참여 확인은 산소, 약물, 목적, 이상반응/불편감 안내가 모두 이루어진 뒤에만 인정한다.
+    if (
+        st.session_state.oxygen_explained
+        and st.session_state.medication_explained
+        and st.session_state.intervention_purpose_explained
+        and st.session_state.side_effect_guidance_given
+        and has_any(text, cooperation_keywords)
+    ):
         st.session_state.intervention_cooperation_requested = True
         updates.append("중재 참여 확인")
 
-    # 산소 설명 + 약물 설명 + 목적 설명 + 협조 요청이 모두 충족되면 중재 설명 완료
-    # 의사 처방에 산소요법과 약물투여가 모두 포함되어 있으므로 두 중재를 모두 설명하도록 한다.
     if (
         st.session_state.oxygen_explained
         and st.session_state.medication_explained
@@ -1054,35 +1196,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             ))
             responses.append(system_message("검사 설명 및 이해와 참여 확인이 완료되었습니다. 검사결과를 확인할 수 있습니다."))
         else:
-            # 누적 인식된 내용에 따라 환자 반응을 구체화하여 같은 문장이 반복되지 않도록 한다.
-            if st.session_state.ecg_explained and not st.session_state.blood_test_explained:
-                responses.append(patient_message(
-                    "심전도로 심장 상태를 확인한다는 건 이해했어요… "
-                    "그런데 피검사는 왜 필요한지도 설명해 주실 수 있을까요?"
-                ))
-            elif st.session_state.blood_test_explained and not st.session_state.ecg_explained:
-                responses.append(patient_message(
-                    "피검사로 심장근육 손상 여부를 본다는 건 알겠어요… "
-                    "심전도 검사는 왜 필요한지도 쉽게 설명해 주세요."
-                ))
-            elif (
-                st.session_state.ecg_explained
-                and st.session_state.blood_test_explained
-                and not st.session_state.exam_cooperation_requested
-            ):
-                responses.append(patient_message(
-                    "심전도랑 피검사가 왜 필요한지는 이제 조금 이해했어요… "
-                    "제가 지금 검사에 협조하면 바로 진행할 수 있는 건가요?"
-                ))
-            elif updates:
-                responses.append(patient_message(
-                    "조금 이해됐어요… 심전도와 피검사가 각각 무엇을 확인하는 검사인지 한 번만 더 쉽게 설명해 주세요."
-                ))
-            else:
-                responses.append(patient_message(
-                    "선생님… 지금 어떤 검사를 하는 건지 몰라서 더 불안해요. "
-                    "왜 필요한 검사인지 쉽게 설명해 주시면 협조할게요…"
-                ))
+            responses.append(patient_message(get_exam_patient_response_for_current_state(updates)))
 
     elif category == "labs":
         if not st.session_state.exam_explained:
@@ -1118,45 +1232,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                     "상호작용 단계가 완료되었습니다. 다음 단계로 SBAR 보고를 진행하세요."
                 ))
             else:
-                # 누적 인식된 내용에 따라 환자 반응을 구체화하여 같은 문장이 반복되지 않도록 한다.
-                if st.session_state.problem_identified and not st.session_state.goal_set:
-                    responses.append(patient_message(
-                        "네… 제일 힘든 건 가슴 통증이랑 숨찬 거예요. "
-                        "그럼 지금 치료 목표는 통증을 줄이고 숨쉬기 편하게 하는 건가요?"
-                    ))
-                elif st.session_state.goal_set and not st.session_state.problem_identified:
-                    responses.append(patient_message(
-                        "통증을 줄이고 숨쉬기 편해지는 게 목표라는 건 알겠어요… "
-                        "그런데 지금 제 상태에서 가장 문제가 되는 게 무엇인지 다시 설명해 주세요."
-                    ))
-                elif (
-                    st.session_state.problem_identified
-                    and st.session_state.goal_set
-                    and not st.session_state.means_explained
-                ):
-                    responses.append(patient_message(
-                        "제 문제와 목표는 이해했어요… "
-                        "그 목표를 위해 앞으로 어떤 치료나 간호를 받게 되는지 알려주세요."
-                    ))
-                elif (
-                    st.session_state.problem_identified
-                    and st.session_state.goal_set
-                    and st.session_state.means_explained
-                    and not st.session_state.agreement_obtained
-                ):
-                    responses.append(patient_message(
-                        "가슴 통증과 숨찬 증상을 줄이기 위해 산소랑 약물치료가 필요하다는 건 이해했어요… "
-                        "제가 협조하면 바로 진행할 수 있는 건가요?"
-                    ))
-                elif updates:
-                    responses.append(patient_message(
-                        "조금 이해됐어요… 제 문제, 치료 목표, 그리고 앞으로 받을 방법을 한 번만 더 연결해서 설명해 주세요."
-                    ))
-                else:
-                    responses.append(patient_message(
-                        "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. "
-                        "지금 제 문제와 치료 목표를 쉽게 설명해 주세요…"
-                    ))
+                responses.append(patient_message(get_interaction_patient_response_for_current_state(updates)))
 
     elif category == "report_intro":
         if not st.session_state.interaction_completed:
@@ -1196,51 +1272,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                     "네… 설명 들으니 조금 안심돼요. 불편하거나 어지러우면 바로 말씀드릴게요… 진행해 주세요."
                 ))
             else:
-                # 환자가 학생의 설명 내용에 맞게 자연스럽게 반응하도록 한다.
-                # 완료 기준은 변경하지 않고, 환자 답변만 더 구체적으로 조정한다.
-                if st.session_state.oxygen_explained and not st.session_state.medication_explained:
-                    responses.append(patient_message(
-                        "산소가 숨쉬는 데 도움이 된다는 건 알겠어요… 그런데 약은 어떤 약이고 왜 필요한가요?"
-                    ))
-                elif st.session_state.medication_explained and not st.session_state.oxygen_explained:
-                    responses.append(patient_message(
-                        "약이 가슴 통증을 줄이는 데 도움이 된다는 건 알겠어요… 산소는 왜 필요한지도 쉽게 설명해 주세요."
-                    ))
-                elif (
-                    st.session_state.oxygen_explained
-                    and st.session_state.medication_explained
-                    and not st.session_state.intervention_purpose_explained
-                ):
-                    responses.append(patient_message(
-                        "산소와 약을 한다는 건 알겠어요… 이게 제 가슴 통증이나 숨찬 증상에 어떤 도움이 되는지 설명해 주세요."
-                    ))
-                elif (
-                    st.session_state.oxygen_explained
-                    and st.session_state.medication_explained
-                    and st.session_state.intervention_purpose_explained
-                    and not st.session_state.side_effect_guidance_given
-                ):
-                    responses.append(patient_message(
-                        "왜 필요한지는 이해했어요… 그런데 약이나 산소를 하다가 어지럽거나 불편하면 어떻게 해야 하나요?"
-                    ))
-                elif (
-                    st.session_state.oxygen_explained
-                    and st.session_state.medication_explained
-                    and st.session_state.intervention_purpose_explained
-                    and not st.session_state.intervention_cooperation_requested
-                ):
-                    responses.append(patient_message(
-                        "불편하면 말씀드리면 되는 것도 알겠어요… 그럼 지금 제가 동의하면 바로 진행하는 건가요?"
-                    ))
-                elif not updates:
-                    responses.append(patient_message(
-                        "선생님… 지금 무엇을 하는 건지 조금 불안해요. 산소와 약이 왜 필요한지 쉽게 설명해 주시면 협조할게요…"
-                    ))
-                else:
-                    responses.append(patient_message(
-                        "조금 이해됐어요… 제가 빠뜨린 부분 없이 안심하고 협조할 수 있도록 한 번만 더 쉽게 설명해 주세요."
-                    ))
-
+                responses.append(patient_message(get_intervention_patient_response_for_current_state(updates)))
     elif category == "intervention":
         if not st.session_state.order_shown:
             responses.append(system_message("아직 의사 처방이 제시되지 않았습니다. SBAR 보고 후 처방을 확인하세요."))
@@ -1292,8 +1324,16 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         responses.append(patient_message("그렇게 말씀해주시니까 조금은 안심돼요… 그래도 가슴이 계속 답답해서 아직 무서워요."))
 
     else:
-        responses.append(patient_message("네… 제가 잘 이해하지 못했어요. 다시 한 번 쉽게 말씀해 주실 수 있을까요?"))
-        responses.append(feedback_message(get_current_guidance()))
+        # 시뮬레이션 중에는 정답 예시나 학습 안내를 보여주지 않고,
+        # 현재 단계에 맞춰 환자가 자연스럽게 되묻도록 한다.
+        if st.session_state.ami_judged and not st.session_state.exam_explained:
+            responses.append(patient_message(get_exam_patient_response_for_current_state([])))
+        elif st.session_state.labs_shown and not st.session_state.interaction_completed:
+            responses.append(patient_message(get_interaction_patient_response_for_current_state([])))
+        elif st.session_state.order_shown and not st.session_state.intervention_explained:
+            responses.append(patient_message(get_intervention_patient_response_for_current_state([])))
+        else:
+            responses.append(patient_message("네… 제가 잘 이해하지 못했어요. 다시 한 번 쉽게 말씀해 주실 수 있을까요?"))
 
     return responses
 
