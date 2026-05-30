@@ -67,16 +67,6 @@ st.markdown("""
 if not api_key:
     st.warning("OPENAI_API_KEY가 설정되지 않았습니다. 규칙기반 응답만 사용됩니다.")
 
-st.info("""
-📌 **진행상태 완료 기준 안내**
-
-- 진행상태는 학습자의 수행 과정을 돕기 위한 체크리스트입니다.
-- 모든 항목을 한 번에 완벽하게 작성해야 다음 단계로 넘어가는 것은 아닙니다.
-- 학생이 입력한 질문과 설명은 단계별로 누적 인식되며, 각 단계의 핵심 수행 내용이 충족되면 해당 단계가 완료로 표시됩니다.
-- 다만 **검사결과 확인, SBAR 보고, 의사 처방 확인, 중재 수행, 디브리핑**은 정해진 순서에 따라 진행됩니다.
-- 각 단계의 해야 할 일과 완료 기준은 왼쪽 진행상태를 클릭하여 확인할 수 있습니다.
-""")
-
 # ------------------------------------------------------------
 # 4. 고정 데이터
 # ------------------------------------------------------------
@@ -238,6 +228,7 @@ def init_state() -> None:
         # 디브리핑
         "show_debriefing": False,
         "debrief_submitted": False,
+        "scroll_to_debriefing": False,
     }
 
     for key, value in defaults.items():
@@ -272,6 +263,10 @@ def lab_message(text: str) -> Dict[str, str]:
 
 def order_message(text: str) -> Dict[str, str]:
     return {"role": "assistant", "content": f"[의사 처방] {text}"}
+
+
+def completion_message(text: str) -> Dict[str, str]:
+    return {"role": "assistant", "content": f"[완료 안내] {text}"}
 
 
 def mark_checklist(item: str) -> None:
@@ -347,6 +342,14 @@ def render_message(msg: Dict[str, str]) -> None:
         bg = "#F1F3F5"
         border = "#495057"
         emoji = "💊"
+
+    # 시뮬레이션 완료 안내
+    elif raw.startswith("[완료 안내]"):
+        label = "시뮬레이션 완료"
+        body = raw.replace("[완료 안내]", "", 1).strip()
+        bg = "#F1F3F5"
+        border = "#495057"
+        emoji = "✅"
 
     # 기존 [시스템] 메시지 중 객관적 임상자료는 표시하고, 진행 조건 안내는 숨김
     elif raw.startswith("[시스템]"):
@@ -722,6 +725,27 @@ def classify_input(user_text: str) -> str:
     if (has_any(text, report_action_keywords) and has_any(text, report_content_keywords)) or (sbar_structure and has_any(text, report_content_keywords)):
         return "report_detail"
 
+    # 상호작용 완료 후에는 SBAR 또는 보고 의도가 확인되면 처방이 제시되도록 한다.
+    # 체크리스트는 완료되었는데 의사 처방이 보이지 않는 문제를 방지하기 위한 보완 조건이다.
+    if st.session_state.interaction_completed and (
+        has_any(text, ["sbar", "s:", "b:", "a:", "r:", "보고", "보고드립니다", "보고 드립니다", "노티", "notify", "의사에게"])
+        or sbar_structure
+    ):
+        return "report_detail"
+
+    # 처방 확인 후에는 '처방', '산소', '약물', '투여', '진행' 표현을
+    # SBAR 보고 예고가 아니라 중재 설명/중재 수행 단계로 우선 분류한다.
+    post_order_intervention_keywords = [
+        "처방", "처방에 따라", "처방대로", "산소", "산소요법", "산소 투여", "산소를 투여",
+        "약", "약물", "투여", "니트로", "니트로글리세린", "ntg",
+        "아스피린", "aspirin", "중재", "시행", "진행", "해도 될까요", "괜찮을까요",
+        "불편", "부작용", "증상 있으면", "알려주세요", "말씀해주세요"
+    ]
+    if st.session_state.order_shown and has_any(text, post_order_intervention_keywords):
+        if st.session_state.intervention_explained:
+            return "intervention"
+        return "intervention_explanation"
+
     # 단순 보고 예고
     simple_report_keywords = [
         "보고하겠습니다", "보고 하겠습니다", "보고하도록", "보고할게요", "보고 드릴게요",
@@ -774,7 +798,9 @@ def classify_input(user_text: str) -> str:
         "괜찮을까요", "괜찮으실까요", "협조"
     ]
     intervention_do_keywords = [
-        "처방에 따라", "처방대로", "산소 투여", "산소를 투여", "산소 적용", "산소 연결",
+        "처방에 따라", "처방대로", "시행하겠습니다", "수행하겠습니다", "진행하겠습니다",
+        "이제 진행", "처치하겠습니다", "중재하겠습니다",
+        "산소 투여", "산소를 투여", "산소 적용", "산소 연결",
         "산소요법 시행", "산소 요법 시행",
         "비강캐뉼라", "비강 캐뉼라", "ntg 투여", "니트로 투여", "니트로글리세린 투여",
         "아스피린 투여", "약물을 투여", "약물 투여", "12-lead", "12유도",
@@ -1101,8 +1127,8 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             mark_checklist("9. 교류작용: SBAR 보고 및 처방 확인")
 
             order_text = (
-                "의사 처방\n"
-                + "\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
+                "의사 처방\\n"
+                + "\\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
             )
             responses.append(order_message(order_text))
 
@@ -1116,10 +1142,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                 st.session_state.cooperation_formed = True
                 mark_checklist("10. 교류작용: 중재 설명 및 중재 수행")
                 responses.append(patient_message(
-                    "네… 산소랑 약이 왜 필요한지는 알겠어요. 아직 무섭긴 한데, 통증이 줄 수 있다면 해주세요…"
-                ))
-                responses.append(system_message(
-                    "중재 설명 및 이해와 참여 확인이 완료되었습니다. 이제 처방 기반 중재를 수행할 수 있습니다."
+                    "네… 산소와 약이 왜 필요한지 이해했어요. 무섭긴 하지만 설명해주신 대로 진행해 주세요…"
                 ))
             else:
                 missing = []
@@ -1128,16 +1151,16 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                 if not st.session_state.intervention_purpose_explained:
                     missing.append("중재 목적 설명")
                 if not st.session_state.intervention_cooperation_requested:
-                    missing.append("중재 참여 확인")
-                responses.append(patient_message(
-                    "선생님… 산소랑 약이 왜 필요한지, 진행해도 되는 건지 조금 더 설명해 주세요."
-                ))
-                responses.append(system_message(
-                    "현재 인식된 내용: "
-                    + (", ".join(updates) if updates else "없음")
-                    + "\n추가로 필요한 내용: "
-                    + ", ".join(missing)
-                ))
+                    missing.append("진행 동의 확인")
+
+                if updates:
+                    responses.append(patient_message(
+                        "네… 설명은 조금 이해됐어요. 그래도 제가 뭘 받게 되는지랑 진행해도 되는지 한 번만 더 쉽게 말씀해 주세요…"
+                    ))
+                else:
+                    responses.append(patient_message(
+                        "선생님… 지금 무엇을 하는 건지 조금 불안해요. 왜 필요한지 쉽게 설명해 주시면 협조할게요…"
+                    ))
 
     elif category == "intervention":
         if not st.session_state.order_shown:
@@ -1175,10 +1198,11 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             responses.append(patient_message(POST_INTERVENTION_STATUS["message"]))
 
         st.session_state.ended = True
-        responses.append(system_message(
+        st.session_state.scroll_to_debriefing = True
+        responses.append(completion_message(
             "중재 후 재사정과 목표달성 확인이 완료되었습니다. "
-            "시뮬레이션이 종료되었습니다. 이제 아래의 디브리핑 단계로 이동하여 "
-            "환자 사정, 검사 및 중재 설명, SBAR 보고, 중재 수행, 재사정 과정을 성찰해 주세요."
+            "시뮬레이션이 종료되었습니다. 아래 디브리핑 단계로 이동하여 "
+            "환자 사정, 판단, 검사 및 중재 설명, SBAR 보고, 중재 수행, 재사정 과정을 성찰해 주세요."
         ))
 
     elif category == "closing_therapeutic":
@@ -1284,9 +1308,22 @@ with col2:
 # ------------------------------------------------------------
 if st.session_state.started:
     st.subheader("💬 시뮬레이션 대화")
-    st.caption("챗봇 환자, 학생간호사, 시스템 임상자료가 색상과 라벨로 구분됩니다.")
+    st.caption("챗봇 환자, 학생간호사, 시스템 임상자료, 완료 안내가 색상과 라벨로 구분됩니다.")
     for msg in st.session_state.messages:
         render_message(msg)
+
+    # 보완: SBAR 보고 후 order_shown=True인데 의사 처방 카드가 메시지 목록에 없으면 화면에 표시
+    # 이전 버전의 [시스템] 처방 메시지가 숨겨지는 문제를 방지한다.
+    if st.session_state.get("order_shown", False):
+        has_order_card = any(
+            ("[의사 처방]" in m.get("content", "")) or ("의사 처방" in m.get("content", ""))
+            for m in st.session_state.messages
+        )
+        if not has_order_card:
+            render_message(order_message(
+                "의사 처방\\n"
+                + "\\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
+            ))
 
 if st.session_state.started and not st.session_state.ended:
     user_input = st.chat_input("환자에게 질문하거나 간호수행 내용을 입력하세요.")
@@ -1300,6 +1337,22 @@ if st.session_state.started and not st.session_state.ended:
 # 15. 디브리핑
 # ------------------------------------------------------------
 if st.session_state.started:
+    st.markdown('<div id="debriefing-section"></div>', unsafe_allow_html=True)
+
+    if st.session_state.get("scroll_to_debriefing", False):
+        st.session_state.scroll_to_debriefing = False
+        st.components.v1.html(
+            """
+            <script>
+            const target = window.parent.document.getElementById("debriefing-section");
+            if (target) {
+                target.scrollIntoView({behavior: "smooth", block: "start"});
+            }
+            </script>
+            """,
+            height=0,
+        )
+
     st.markdown("---")
     st.subheader("🧠 디브리핑")
 
@@ -1313,6 +1366,7 @@ if st.session_state.started:
             mark_checklist("12. 성찰: 디브리핑")
             st.session_state.ended = True
             st.session_state.show_debriefing = True
+            st.session_state.scroll_to_debriefing = True
             st.rerun()
 
     if st.session_state.show_debriefing and not st.session_state.debrief_submitted:
@@ -1340,13 +1394,16 @@ if st.session_state.started:
         col1, col2 = st.columns(2)
         with col1:
             if st.button("종료", disabled=not all_filled):
+                mark_checklist("12. 성찰: 디브리핑")
                 st.session_state.debrief_submitted = True
                 st.session_state.show_debriefing = False
+                st.session_state.scroll_to_debriefing = True
                 st.rerun()
         with col2:
             if st.button("디브리핑 취소"):
                 st.session_state.show_debriefing = False
                 st.session_state.ended = False
+                st.session_state.scroll_to_debriefing = True
                 st.rerun()
 
     if st.session_state.debrief_submitted:
