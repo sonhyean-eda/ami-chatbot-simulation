@@ -1246,7 +1246,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             responses.append(system_message("아직 의사 처방이 제시되지 않았습니다. SBAR 보고 후 처방을 확인하세요."))
         elif not st.session_state.intervention_explained:
             responses.append(patient_message(
-                "선생님… 산소와 약을 바로 하기 전에 각각 왜 필요한지 설명해 주세요. "
+                "선생님… 산소와 약을 바로 하기 전에 왜 필요한지, 불편하면 어떻게 해야 하는지 설명해 주세요. "
                 "설명 듣고 진행해도 되는지 말씀드릴게요…"
             ))
             responses.append(system_message("중재 수행 전 산소 설명, 약물 설명, 중재 목적 설명, 환자의 이해와 참여 확인이 필요합니다."))
