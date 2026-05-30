@@ -9,12 +9,12 @@ from openai import OpenAI
 # AMI 챗봇 가상환자 시뮬레이션
 # - 챗봇 역할: 급성심근경색 의심 환자 '김심근'
 # - 학습자 역할: 응급실 학생간호사
-# - 시스템 역할: 검사결과, 처방, 진행 조건 안내
+# - 시스템 역할: 활력징후, 검사결과, 의사 처방 제시
 # - 설계 원칙:
 #   1) 환자 정보/검사결과/처방/중재 후 반응은 고정값으로 유지
 #   2) King 목표달성이론 흐름을 한 방향으로 반영
 #   3) 챗봇은 환자 역할만 수행하고 의사/교수자/평가자 역할을 하지 않음
-#   4) 단계별 진행 조건과 누적 인식으로 핵심 단계 누락을 방지함
+#   4) 진행 상태는 내부 체크리스트로만 관리하고, 화면의 시스템 정보는 객관적 임상자료로 제한함
 # ============================================================
 
 # ------------------------------------------------------------
@@ -43,12 +43,12 @@ st.markdown("""
 **역할 구분**
 - **챗봇:** 급성심근경색이 의심되는 62세 남성 환자 *김심근* 역할만 수행합니다.
 - **학습자:** 응급실 학생간호사 역할로 환자를 사정하고, 검사와 중재를 설명하며, SBAR 보고와 재사정을 수행합니다.
-- **시스템:** 활력징후, 검사결과, 의사 처방, 진행 조건을 안내합니다.
+- **시스템:** 활력징후, 검사결과, 의사 처방만 제시합니다.
 
 **오류 방지 설계**
 - 환자 기본정보, 활력징후, 검사결과, 의사 처방, 중재 후 반응은 **고정값**으로 제시됩니다.
 - 챗봇은 **의사, 교수자, 평가자 역할을 하지 않으며**, 급성심근경색이 의심되는 환자 역할만 수행합니다.
-- 검사 설명, 환자의 이해와 참여 확인, SBAR 보고, 중재 설명, 중재 수행, 중재 후 재사정 등 핵심 단계가 누락되지 않도록 **단계별 진행 조건**을 설정했습니다.
+- 활력징후, 검사결과, 의사 처방은 환자 응답이 아니라 **시스템 정보**로만 제시됩니다.
 - 학생이 한 문장으로 완성된 답변을 입력하지 않아도, 짧은 발화를 단계별로 입력하면 프로그램이 이를 **누적 인식**하도록 구성했습니다.
 - OpenAI API는 선택 사항이며, 사용 시에도 **환자 말투 자연화**에만 사용됩니다. 환자 정보, 검사결과, 처방, 중재 후 반응은 임의로 변경되지 않습니다.
 
@@ -66,16 +66,6 @@ st.markdown("""
 
 if not api_key:
     st.warning("OPENAI_API_KEY가 설정되지 않았습니다. 규칙기반 응답만 사용됩니다.")
-
-st.info("""
-📌 **진행상태 완료 기준 안내**
-
-- 진행상태는 학습자의 수행 과정을 돕기 위한 체크리스트입니다.
-- 모든 항목을 한 번에 완벽하게 작성해야 다음 단계로 넘어가는 것은 아닙니다.
-- 학생이 입력한 질문과 설명은 단계별로 누적 인식되며, 각 단계의 핵심 수행 내용이 충족되면 해당 단계가 완료로 표시됩니다.
-- 다만 **검사결과 확인, SBAR 보고, 의사 처방 확인, 중재 수행, 디브리핑**은 정해진 순서에 따라 진행됩니다.
-- 각 단계의 해야 할 일과 완료 기준은 왼쪽 진행상태를 클릭하여 확인할 수 있습니다.
-""")
 
 # ------------------------------------------------------------
 # 4. 고정 데이터
@@ -262,6 +252,18 @@ def system_message(text: str) -> Dict[str, str]:
     return {"role": "assistant", "content": f"[시스템] {text}"}
 
 
+def vital_message(text: str) -> Dict[str, str]:
+    return {"role": "assistant", "content": f"[활력징후] {text}"}
+
+
+def lab_message(text: str) -> Dict[str, str]:
+    return {"role": "assistant", "content": f"[검사결과] {text}"}
+
+
+def order_message(text: str) -> Dict[str, str]:
+    return {"role": "assistant", "content": f"[의사 처방] {text}"}
+
+
 def mark_checklist(item: str) -> None:
     if item in st.session_state.checklist:
         st.session_state.checklist[item] = True
@@ -285,31 +287,75 @@ def feedback_message(text: str) -> Dict[str, str]:
 
 
 def render_message(msg: Dict[str, str]) -> None:
-    """환자 응답, 시스템 안내, 의사 처방, 학습 안내, 학생 입력을 시각적으로 구분한다."""
+    """챗봇, 학습자, 시스템 정보를 색상과 라벨로 명확히 구분한다."""
     raw = msg.get("content", "")
     role = msg.get("role", "assistant")
 
+    # 기본값
+    label = "안내"
+    body = raw
+    bg = "#F8F9FA"
+    border = "#ADB5BD"
+    emoji = "ℹ️"
+
+    # 학습자 입력
     if role == "user":
-        label, body, bg, border = "학생간호사", raw, "#E8F1FF", "#74A7FF"
+        label = "학생간호사"
+        body = raw
+        bg = "#E8F1FF"
+        border = "#4C8DFF"
+        emoji = "🧑‍⚕️"
+
+    # 챗봇 환자 응답
     elif raw.startswith("[환자]"):
-        label, body, bg, border = "환자 김심근", raw.replace("[환자]", "", 1).strip(), "#FFF5E8", "#F2A65A"
+        label = "챗봇 환자 김심근"
+        body = raw.replace("[환자]", "", 1).strip()
+        bg = "#FFF4E6"
+        border = "#F59F00"
+        emoji = "🫀"
+
+    # 시스템: 활력징후
+    elif raw.startswith("[활력징후]"):
+        label = "시스템 | 활력징후"
+        body = raw.replace("[활력징후]", "", 1).strip()
+        bg = "#F1F3F5"
+        border = "#495057"
+        emoji = "📊"
+
+    # 시스템: 검사결과
+    elif raw.startswith("[검사결과]"):
+        label = "시스템 | 검사결과"
+        body = raw.replace("[검사결과]", "", 1).strip()
+        bg = "#F1F3F5"
+        border = "#495057"
+        emoji = "🧪"
+
+    # 시스템: 의사 처방
     elif raw.startswith("[의사 처방]"):
-        label, body, bg, border = "의사 처방", raw.replace("[의사 처방]", "", 1).strip(), "#EAF7EA", "#65B96F"
-    elif raw.startswith("[학습 안내]"):
-        label, body, bg, border = "학습 안내", raw.replace("[학습 안내]", "", 1).strip(), "#F5F0FF", "#9B7BEA"
+        label = "시스템 | 의사 처방"
+        body = raw.replace("[의사 처방]", "", 1).strip()
+        bg = "#F1F3F5"
+        border = "#495057"
+        emoji = "💊"
+
+    # 기존 [시스템] 메시지는 객관적 임상자료가 아닌 진행 조건 안내일 수 있으므로 화면에 표시하지 않음
     elif raw.startswith("[시스템]"):
-        label, body, bg, border = "시스템 안내", raw.replace("[시스템]", "", 1).strip(), "#F1F3F5", "#868E96"
-    else:
-        label, body, bg, border = "안내", raw, "#F8F9FA", "#ADB5BD"
+        return
+
+    # 학습 안내는 표시하지 않음
+    elif raw.startswith("[학습 안내]"):
+        return
 
     text_color = "#111827"
     subtext_color = "#374151"
 
     html = f"""
-    <div style="background:{bg}; border-left:6px solid {border}; padding:12px 14px;
-                border-radius:10px; margin:8px 0; line-height:1.55; white-space:pre-wrap;
-                color:{text_color}; box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <div style="font-weight:700; margin-bottom:4px; color:{text_color};">{escape(label)}</div>
+    <div style="background:{bg}; border-left:7px solid {border}; padding:13px 15px;
+                border-radius:12px; margin:9px 0; line-height:1.6; white-space:pre-wrap;
+                color:{text_color}; box-shadow:0 1px 4px rgba(0,0,0,0.10);">
+        <div style="font-weight:800; margin-bottom:5px; color:{text_color};">
+            {emoji} {escape(label)}
+        </div>
         <div style="color:{subtext_color};">{escape(body)}</div>
     </div>
     """
@@ -877,7 +923,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         st.session_state.vitals_shown = True
         st.session_state.vitals_done = True
         mark_checklist("3. 지각: 활력징후 확인")
-        responses.append(system_message(
+        responses.append(vital_message(
             "초기 활력징후\n"
             f"- BP: {VITAL_SIGNS['BP']}\n"
             f"- HR: {VITAL_SIGNS['HR']}\n"
@@ -960,7 +1006,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         else:
             st.session_state.labs_shown = True
             mark_checklist("7. 상호작용: 검사결과 기반 문제 구체화")
-            responses.append(system_message(
+            responses.append(lab_message(
                 "검사결과\n"
                 f"- ECG: {LAB_RESULTS['ECG']}\n"
                 f"- Troponin I: {LAB_RESULTS['Troponin I']}\n"
@@ -1023,7 +1069,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             st.session_state.order_shown = True
             mark_checklist("9. 교류작용: SBAR 보고 및 처방 확인")
             responses.append(system_message(
-                "SBAR 보고가 완료되었습니다. 의사 처방이 제시됩니다.\n"
+                "의사 처방\n"
                 + "\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
             ))
 
@@ -1072,8 +1118,8 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             st.session_state.intervention_done = True
             st.session_state.cooperation_formed = True
             mark_checklist("10. 교류작용: 중재 설명 및 중재 수행")
-            responses.append(system_message(
-                "처방 기반 중재가 수행되었습니다.\n"
+            responses.append(order_message(
+                "처방 기반 중재 수행\n"
                 f"- {DOCTOR_ORDER[0]}\n"
                 f"- {DOCTOR_ORDER[1]}\n"
                 f"- {DOCTOR_ORDER[2]}\n"
@@ -1205,7 +1251,7 @@ with col2:
 # ------------------------------------------------------------
 if st.session_state.started:
     st.subheader("💬 시뮬레이션 대화")
-    st.caption("환자 응답, 시스템 안내, 의사 처방, 학습 안내가 색상과 라벨로 구분됩니다.")
+    st.caption("챗봇 환자, 학생간호사, 시스템 임상자료가 색상과 라벨로 구분됩니다.")
     for msg in st.session_state.messages:
         render_message(msg)
 
