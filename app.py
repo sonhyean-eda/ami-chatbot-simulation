@@ -1370,16 +1370,9 @@ if st.session_state.started:
             st.rerun()
 
     if st.session_state.show_debriefing and not st.session_state.debrief_submitted:
-        st.success("시뮬레이션이 종료되었습니다. 아래 질문을 바탕으로 성찰해보세요.")
+        st.success("시뮬레이션이 종료되었습니다. 아래 질문을 바탕으로 먼저 성찰 답변을 작성해보세요.")
         for idx, question in enumerate(DEBRIEFING_QUESTIONS, start=1):
             st.write(f"{idx}. {question}")
-
-        st.markdown("### 🔍 참고 응답 예시 선택 보기")
-        st.caption("정답을 먼저 보여주는 방식이 아니라, 학습자가 필요할 때 클릭하여 자신의 응답을 점검하도록 구성했습니다.")
-        for title, examples in DEBRIEFING_EXAMPLES.items():
-            with st.expander(title):
-                for example in examples:
-                    st.write(f"- {example}")
 
         st.markdown("### ✍ 디브리핑 답변 작성")
         st.text_area("1번 질문 답변", key="d1")
@@ -1390,6 +1383,8 @@ if st.session_state.started:
         all_filled = all(st.session_state.get(f"d{i}", "").strip() for i in range(1, 5))
         if not all_filled:
             st.warning("디브리핑 답변 4개를 모두 작성한 후 종료할 수 있습니다.")
+        else:
+            st.info("답변 작성이 완료되었습니다. 종료 버튼을 누르면 참고 응답 예시를 확인할 수 있습니다.")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -1411,6 +1406,14 @@ if st.session_state.started:
         st.write("입력한 답변:")
         for idx in range(1, 5):
             st.write(f"{idx}번: {st.session_state.get(f'd{idx}', '')}")
+
+        st.markdown("### 🔍 참고 응답 예시 선택 보기")
+        st.caption("학습자가 먼저 디브리핑 답변을 완료한 뒤, 자신의 응답을 점검할 수 있도록 참고 예시를 제공합니다.")
+        for title, examples in DEBRIEFING_EXAMPLES.items():
+            with st.expander(title):
+                for example in examples:
+                    st.write(f"- {example}")
+
         if st.button("첫 화면으로 돌아가기"):
             reset_simulation()
             st.rerun()
