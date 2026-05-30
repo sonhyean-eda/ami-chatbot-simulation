@@ -402,6 +402,10 @@ def naturalize_with_openai(user_input: str, clinical_fact: str, tone: str = "불
             input=prompt,
         )
         text = response.output_text.strip()
+        forbidden_before_student_explanation = ["심전도", "혈액검사", "혈액 검사", "산소", "약물", "니트로글리세린", "아스피린"]
+        student_has_explained_medical_terms = any(term.lower() in user_input.lower() for term in forbidden_before_student_explanation)
+        if text and not student_has_explained_medical_terms and any(term in text for term in forbidden_before_student_explanation):
+            return clinical_fact
         return text if text else clinical_fact
     except Exception:
         return clinical_fact
