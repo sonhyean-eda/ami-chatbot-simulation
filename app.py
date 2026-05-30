@@ -1,4 +1,5 @@
 import os
+from html import escape
 from typing import Dict, List, Tuple
 
 import streamlit as st
@@ -47,7 +48,7 @@ st.markdown("""
 **오류 방지 설계**
 - 환자 기본정보, 활력징후, 검사결과, 의사 처방, 중재 후 반응은 **고정값**으로 제시됩니다.
 - 챗봇은 **의사, 교수자, 평가자 역할을 하지 않으며**, 급성심근경색이 의심되는 환자 역할만 수행합니다.
-- 검사 설명, 환자 협조 형성, SBAR 보고, 중재 설명, 중재 수행, 중재 후 재사정 등 핵심 단계가 누락되지 않도록 **단계별 진행 조건**을 설정했습니다.
+- 검사 설명, 환자의 이해와 참여 확인, SBAR 보고, 중재 설명, 중재 수행, 중재 후 재사정 등 핵심 단계가 누락되지 않도록 **단계별 진행 조건**을 설정했습니다.
 - 학생이 한 문장으로 완성된 답변을 입력하지 않아도, 짧은 발화를 단계별로 입력하면 프로그램이 이를 **누적 인식**하도록 구성했습니다.
 - OpenAI API는 선택 사항이며, 사용 시에도 **환자 말투 자연화**에만 사용됩니다. 환자 정보, 검사결과, 처방, 중재 후 반응은 임의로 변경되지 않습니다.
 
@@ -55,7 +56,7 @@ st.markdown("""
 - 프로그램은 **지각 → 판단 → 행위 → 반응 → 상호작용 → 교류작용 → 목표달성** 순서로 한 방향으로 진행됩니다.
 - 지각 단계는 **초기 접촉 및 주호소 확인 → 통증 및 동반 증상 사정 → 활력징후 확인 → 병력 및 위험요인 사정**으로 구성됩니다.
 - 검사결과 확인은 판단 단계로 되돌아가는 것이 아니라, 이후 **상호작용 단계에서 환자 문제를 구체화하기 위한 자료**로 사용됩니다.
-- 상호작용 단계에는 **문제 확인, 공동 목표 설정, 목표달성 방법 탐색, 목표달성 방법 합의**가 포함됩니다.
+- 상호작용 단계에는 **환자 문제 확인, 간호목표 공유, 목표달성 방법 설명, 환자의 이해와 참여 확인**이 포함됩니다.
 - 교류작용 단계에는 **SBAR 보고, 처방 확인, 중재 설명, 중재 수행**이 포함됩니다.
 
 **학생 발화 인식 방식**
@@ -65,6 +66,16 @@ st.markdown("""
 
 if not api_key:
     st.warning("OPENAI_API_KEY가 설정되지 않았습니다. 규칙기반 응답만 사용됩니다.")
+
+st.info("""
+📌 **진행상태 완료 기준 안내**
+
+- 진행상태는 학습자의 수행 과정을 돕기 위한 체크리스트입니다.
+- 모든 항목을 한 번에 완벽하게 작성해야 다음 단계로 넘어가는 것은 아닙니다.
+- 학생이 입력한 질문과 설명은 단계별로 누적 인식되며, 각 단계의 핵심 수행 내용이 충족되면 해당 단계가 완료로 표시됩니다.
+- 다만 **검사결과 확인, SBAR 보고, 의사 처방 확인, 중재 수행, 디브리핑**은 정해진 순서에 따라 진행됩니다.
+- 각 단계의 해야 할 일과 완료 기준은 왼쪽 진행상태를 클릭하여 확인할 수 있습니다.
+""")
 
 # ------------------------------------------------------------
 # 4. 고정 데이터
@@ -124,10 +135,39 @@ POST_INTERVENTION_STATUS: Dict[str, str] = {
 
 DEBRIEFING_QUESTIONS: List[str] = [
     "환자의 상태를 파악하는 데 가장 중요했던 사정자료는 무엇이었습니까?",
-    "검사와 중재의 필요성을 환자에게 어떻게 설명하였으며, 그 설명이 환자의 협조에 어떤 영향을 주었습니까?",
-    "상호작용 단계에서 환자의 문제를 어떻게 확인하고, 공동 목표와 목표달성 방법을 어떻게 합의하였습니까?",
+    "검사와 중재의 필요성을 환자에게 어떻게 설명하였으며, 그 설명이 환자의 이해와 참여에 어떤 영향을 주었습니까?",
+    "상호작용 단계에서 환자의 문제를 어떻게 확인하고, 간호목표와 목표달성 방법을 어떻게 공유하였습니까?",
     "중재 후 통증, 호흡곤란, 불안 변화와 관련하여 어떤 목표가 달성되었다고 보았습니까?",
 ]
+
+DEBRIEFING_EXAMPLES: Dict[str, List[str]] = {
+    "사정 질문 예시": [
+        "가슴 통증이 언제부터 시작되었나요? 위치와 양상은 어떤가요?",
+        "통증이 턱이나 어깨로 퍼지나요? 0점부터 10점 중 몇 점 정도인가요?",
+        "숨이 차거나 식은땀이 나는 증상이 함께 있나요?",
+    ],
+    "검사 설명 예시": [
+        "현재 증상으로 보아 심장 상태를 빨리 확인해야 해서 심전도와 혈액검사가 필요합니다.",
+        "심전도는 심장의 전기적 변화를 확인하는 검사이고, 혈액검사는 심장근육 손상 여부를 확인하는 데 도움이 됩니다.",
+        "검사 과정이 불안하실 수 있지만 빠르게 상태를 확인하기 위한 과정입니다. 진행해도 괜찮으실까요?",
+    ],
+    "SBAR 보고 예시": [
+        "S: 62세 남성 김심근 환자가 30분 전부터 흉통과 호흡곤란을 호소합니다.",
+        "B: 고혈압 과거력, 흡연력, 부친 심장마비 가족력이 있습니다.",
+        "A: NRS 8점 흉통, 좌측 어깨와 턱 방사통, 식은땀, SpO₂ 93%, ECG상 II, III, aVF ST elevation, Troponin I 상승으로 AMI가 의심됩니다.",
+        "R: 산소요법, 약물투여 및 추가 처방 확인을 요청드립니다.",
+    ],
+    "중재 설명 예시": [
+        "산소는 숨쉬기 어려운 증상을 완화하고 심장에 산소 공급을 돕기 위해 적용합니다.",
+        "니트로글리세린은 흉통 완화에 도움이 될 수 있고, 아스피린은 혈전 생성을 줄이는 데 사용됩니다.",
+        "약물 투여 후 어지러움이나 불편감이 있으면 바로 말씀해주세요. 설명드린 중재를 진행해도 괜찮으실까요?",
+    ],
+    "재사정 예시": [
+        "중재 후 가슴 통증은 지금 몇 점 정도인가요?",
+        "숨쉬기는 아까보다 편해지셨나요? 불안감은 어느 정도인가요?",
+        "다시 통증이 심해지거나 숨이 차면 바로 말씀해주세요.",
+    ],
+}
 
 # ------------------------------------------------------------
 # 5. 체크리스트: 화면 표시 항목과 코드에서 체크하는 항목명 통일
@@ -138,9 +178,9 @@ CHECKLIST_TEMPLATE: Dict[str, bool] = {
     "3. 지각: 활력징후 확인": False,
     "4. 지각: 병력 및 위험요인 사정": False,
     "5. 판단: AMI 의심 상황 판단 및 검사 필요성 인식": False,
-    "6. 행위/반응: 검사 필요성 설명 및 검사 협조 형성": False,
+    "6. 행위/반응: 검사 필요성 설명 및 환자의 이해·참여 확인": False,
     "7. 상호작용: 검사결과 기반 문제 구체화": False,
-    "8. 상호작용: 공동 목표 설정 및 목표달성 방법 합의": False,
+    "8. 상호작용: 간호목표 공유 및 목표달성 방법 확인": False,
     "9. 교류작용: SBAR 보고 및 처방 확인": False,
     "10. 교류작용: 중재 설명 및 중재 수행": False,
     "11. 목표달성: 중재 후 재사정 및 목표달성 확인": False,
@@ -236,6 +276,87 @@ def count_true(values: List[bool]) -> int:
     return sum(1 for value in values if value)
 
 
+def doctor_message(text: str) -> Dict[str, str]:
+    return {"role": "assistant", "content": f"[의사 처방] {text}"}
+
+
+def feedback_message(text: str) -> Dict[str, str]:
+    return {"role": "assistant", "content": f"[학습 안내] {text}"}
+
+
+def render_message(msg: Dict[str, str]) -> None:
+    """환자 응답, 시스템 안내, 의사 처방, 학습 안내, 학생 입력을 시각적으로 구분한다."""
+    raw = msg.get("content", "")
+    role = msg.get("role", "assistant")
+
+    if role == "user":
+        label, body, bg, border = "학생간호사", raw, "#E8F1FF", "#74A7FF"
+    elif raw.startswith("[환자]"):
+        label, body, bg, border = "환자 김심근", raw.replace("[환자]", "", 1).strip(), "#FFF5E8", "#F2A65A"
+    elif raw.startswith("[의사 처방]"):
+        label, body, bg, border = "의사 처방", raw.replace("[의사 처방]", "", 1).strip(), "#EAF7EA", "#65B96F"
+    elif raw.startswith("[학습 안내]"):
+        label, body, bg, border = "학습 안내", raw.replace("[학습 안내]", "", 1).strip(), "#F5F0FF", "#9B7BEA"
+    elif raw.startswith("[시스템]"):
+        label, body, bg, border = "시스템 안내", raw.replace("[시스템]", "", 1).strip(), "#F1F3F5", "#868E96"
+    else:
+        label, body, bg, border = "안내", raw, "#F8F9FA", "#ADB5BD"
+
+    html = f"""
+    <div style="background:{bg}; border-left:6px solid {border}; padding:12px 14px;
+                border-radius:10px; margin:8px 0; line-height:1.55; white-space:pre-wrap;">
+        <div style="font-weight:700; margin-bottom:4px;">{escape(label)}</div>
+        <div>{escape(body)}</div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def get_current_guidance() -> str:
+    """처음 문구를 반복하지 않고 현재 단계에 맞는 재질문/안내를 제공한다."""
+    if not st.session_state.intro_done:
+        return "먼저 자기소개와 환자 확인을 해보세요. 예: ‘안녕하세요, 학생간호사입니다. 성함이 어떻게 되세요?’"
+    if not st.session_state.pain_symptom_done:
+        return "현재 단계에서는 통증 위치, 양상, 시작 시점, NRS 점수, 방사통, 동반증상을 확인해보세요."
+    if not st.session_state.vitals_done:
+        return "다음으로 활력징후를 확인해보세요. 예: ‘현재 활력징후를 확인하겠습니다.’"
+    if not st.session_state.history_risk_done:
+        return "과거력, 복용약, 흡연력, 가족력, 알레르기 여부 등 위험요인을 확인해보세요."
+    if not st.session_state.ami_judged:
+        return "수집한 자료를 바탕으로 AMI 가능성을 판단하고, 심전도와 심근효소 검사의 필요성을 인식해보세요."
+    if not st.session_state.exam_explained:
+        return "심전도와 혈액검사가 왜 필요한지 설명하고, 환자의 이해와 검사 참여 의사를 확인해보세요."
+    if not st.session_state.labs_shown:
+        return "검사 설명과 참여 확인이 완료되었습니다. 이제 검사결과를 확인해보세요."
+    if not st.session_state.interaction_completed:
+        return "검사결과를 바탕으로 환자 문제를 확인하고, 간호목표와 목표달성 방법을 환자에게 쉽게 공유해보세요."
+    if not st.session_state.sbar_reported:
+        return "SBAR 형식으로 환자 상태, 배경, 사정 결과, 제안을 포함하여 의사에게 보고해보세요."
+    if not st.session_state.intervention_explained:
+        return "의사 처방을 바탕으로 산소요법과 약물의 목적을 설명하고, 환자의 이해와 참여 의사를 확인해보세요."
+    if not st.session_state.intervention_done:
+        return "이제 처방에 따라 산소요법, NTG, Aspirin, 12-lead ECG 재확인을 수행해보세요."
+    if not st.session_state.reassessment_done:
+        return "중재 후 통증, 호흡곤란, 불안 정도를 재사정해보세요."
+    return "시뮬레이션 흐름은 완료되었습니다. 디브리핑에서 수행 과정을 성찰해보세요."
+
+
+STEP_HELP: Dict[str, Tuple[str, str]] = {
+    "1. 지각: 초기 접촉 및 주호소 확인": ("환자에게 자기소개를 하고 환자 확인과 주호소를 확인합니다.", "자기소개 또는 환자 확인이 이루어지면 완료됩니다."),
+    "2. 지각: 통증 및 동반 증상 사정": ("통증 위치, 양상, 시작 시점, NRS, 방사통, 호흡곤란, 식은땀, 불안을 사정합니다.", "통증/동반증상 관련 질문이 입력되면 완료됩니다."),
+    "3. 지각: 활력징후 확인": ("혈압, 맥박, 호흡수, 산소포화도, 체온을 확인합니다.", "활력징후 확인 요청 시 시스템이 수치를 제시하면 완료됩니다."),
+    "4. 지각: 병력 및 위험요인 사정": ("고혈압, 복용약, 흡연력, 가족력, 알레르기 등을 확인합니다.", "병력 또는 위험요인 관련 질문이 입력되면 완료됩니다."),
+    "5. 판단: AMI 의심 상황 판단 및 검사 필요성 인식": ("수집한 자료를 바탕으로 AMI 가능성과 ECG/심근효소 검사 필요성을 판단합니다.", "AMI 가능성 또는 검사 필요성을 언급하면 완료됩니다."),
+    "6. 행위/반응: 검사 필요성 설명 및 환자의 이해·참여 확인": ("ECG와 혈액검사의 필요성을 쉽게 설명하고 환자의 이해와 참여 의사를 확인합니다.", "심전도 설명, 혈액검사 설명, 검사 참여 확인이 모두 인식되면 완료됩니다."),
+    "7. 상호작용: 검사결과 기반 문제 구체화": ("검사결과를 확인하고 환자의 주요 문제를 구체화합니다.", "검사결과 확인 후 완료됩니다."),
+    "8. 상호작용: 간호목표 공유 및 목표달성 방법 확인": ("환자 문제, 간호목표, 목표달성 방법을 환자에게 공유하고 이해와 참여를 확인합니다.", "문제 확인, 목표 공유, 방법 설명, 참여 확인이 모두 인식되면 완료됩니다."),
+    "9. 교류작용: SBAR 보고 및 처방 확인": ("SBAR로 의사에게 보고하고 처방을 확인합니다.", "SBAR 보고 내용이 인식되면 시스템/의사 처방이 제시되고 완료됩니다."),
+    "10. 교류작용: 중재 설명 및 중재 수행": ("산소요법과 약물 중재를 설명하고 처방에 따라 수행합니다.", "중재 설명 후 처방 기반 중재 수행이 이루어지면 완료됩니다."),
+    "11. 목표달성: 중재 후 재사정 및 목표달성 확인": ("중재 후 통증, 호흡곤란, 불안 변화를 재사정합니다.", "중재 후 상태 변화 확인이 이루어지면 완료됩니다."),
+    "12. 성찰: 디브리핑": ("사정, 판단, 설명, 보고, 중재, 재사정 과정을 성찰합니다.", "디브리핑을 열고 답변을 작성하면 완료됩니다."),
+}
+
+
 # ------------------------------------------------------------
 # 8. OpenAI 말투 자연화: 환자 역할만 허용
 # ------------------------------------------------------------
@@ -318,7 +439,7 @@ def update_exam_explanation_state(text: str) -> List[str]:
         updates.append("혈액검사 설명")
     if has_any(text, cooperation_keywords):
         st.session_state.exam_cooperation_requested = True
-        updates.append("검사 협조 요청")
+        updates.append("검사 참여 확인")
 
     if (
         st.session_state.ecg_explained
@@ -327,7 +448,7 @@ def update_exam_explanation_state(text: str) -> List[str]:
     ):
         st.session_state.exam_explained = True
         st.session_state.cooperation_formed = True
-        mark_checklist("6. 행위/반응: 검사 필요성 설명 및 검사 협조 형성")
+        mark_checklist("6. 행위/반응: 검사 필요성 설명 및 환자의 이해·참여 확인")
 
     return updates
 
@@ -374,16 +495,16 @@ def update_interaction_state(text: str) -> List[str]:
         updates.append("환자 문제 확인")
     if has_any(text, goal_keywords):
         st.session_state.goal_set = True
-        updates.append("공동 목표 설정")
+        updates.append("간호목표 공유")
     if has_any(text, means_keywords):
         st.session_state.means_explained = True
-        updates.append("목표달성 방법 제시")
+        updates.append("목표달성 방법 설명")
     if has_any(text, agreement_keywords):
         st.session_state.agreement_obtained = True
-        updates.append("방법 합의/협조 확인")
+        updates.append("이해·참여 확인")
 
-    # King의 목표달성이론에서 상호작용은 문제 확인, 공동 목표 설정,
-    # 목표달성 방법 제시, 방법 합의/협조 확인이 모두 포함되어야 하므로
+    # King의 목표달성이론에서 상호작용은 문제 확인, 간호목표 공유,
+    # 목표달성 방법 설명, 이해·참여 확인이 모두 포함되어야 하므로
     # 4요소가 모두 충족될 때 상호작용 완료로 인정한다.
     if (
         st.session_state.problem_identified
@@ -393,7 +514,7 @@ def update_interaction_state(text: str) -> List[str]:
     ):
         st.session_state.interaction_completed = True
         st.session_state.cooperation_formed = True
-        mark_checklist("8. 상호작용: 공동 목표 설정 및 목표달성 방법 합의")
+        mark_checklist("8. 상호작용: 간호목표 공유 및 목표달성 방법 확인")
 
     return updates
 
@@ -448,7 +569,7 @@ def update_intervention_explanation_state(text: str) -> List[str]:
         updates.append("이상반응/불편감 안내")
     if has_any(text, cooperation_keywords):
         st.session_state.intervention_cooperation_requested = True
-        updates.append("중재 협조 요청")
+        updates.append("중재 참여 확인")
 
     # 산소 또는 약물 중 하나 이상 + 목적 설명 + 협조 요청이면 중재 설명 완료
     if (
@@ -516,7 +637,8 @@ def classify_input(user_text: str) -> str:
         "st 상승", "트로포닌", "troponin", "ck-mb", "ckmb",
         "ami", "ami 의심", "급성심근경색", "급성심근경색 의심", "심근경색", "stemi"
     ]
-    if has_any(text, report_action_keywords) and has_any(text, report_content_keywords):
+    sbar_structure = has_any(text, ["s:", "b:", "a:", "r:", "situation", "background", "assessment", "recommendation", "상황", "배경", "사정", "제안"])
+    if (has_any(text, report_action_keywords) and has_any(text, report_content_keywords)) or (sbar_structure and has_any(text, report_content_keywords)):
         return "report_detail"
 
     # 단순 보고 예고
@@ -532,7 +654,7 @@ def classify_input(user_text: str) -> str:
     # 단계 우선순위 1: 상호작용
     # 검사결과 확인 후, SBAR 보고 전에는 "산소/약물/치료/협조" 표현이
     # 중재 설명이나 중재 수행이 아니라 King의 상호작용 단계
-    # (문제 확인·공동 목표 설정·목표달성 방법 제시·방법 합의)로 우선 분류된다.
+    # (문제 확인·간호목표 공유·목표달성 방법 설명·방법 합의)로 우선 분류된다.
     # ------------------------------------------------------------
     interaction_keywords = [
         "문제", "현재 문제", "가장 힘든", "가장 큰 문제",
@@ -806,7 +928,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             responses.append(patient_message(
                 "아… 심장 상태를 확인하려고 심전도랑 피검사를 하는 거군요. 무섭긴 한데, 설명을 들으니까 해야 할 것 같아요… 빨리 해주세요."
             ))
-            responses.append(system_message("검사 설명 및 협조 형성이 완료되었습니다. 검사결과를 확인할 수 있습니다."))
+            responses.append(system_message("검사 설명 및 이해와 참여 확인이 완료되었습니다. 검사결과를 확인할 수 있습니다."))
         else:
             missing = []
             if not st.session_state.ecg_explained:
@@ -814,7 +936,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             if not st.session_state.blood_test_explained:
                 missing.append("혈액검사 설명")
             if not st.session_state.exam_cooperation_requested:
-                missing.append("검사 협조 요청")
+                missing.append("검사 참여 확인")
             responses.append(patient_message(
                 "네… 그런데 어떤 검사인지, 왜 해야 하는지 조금 더 설명해 주시면 안심하고 협조할 수 있을 것 같아요."
             ))
@@ -863,11 +985,11 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                 if not st.session_state.problem_identified:
                     missing.append("환자 문제 확인")
                 if not st.session_state.goal_set:
-                    missing.append("공동 목표 설정")
+                    missing.append("간호목표 공유")
                 if not st.session_state.means_explained:
-                    missing.append("목표달성 방법 제시")
+                    missing.append("목표달성 방법 설명")
                 if not st.session_state.agreement_obtained:
-                    missing.append("방법 합의/협조 확인")
+                    missing.append("이해·참여 확인")
                 responses.append(patient_message(
                     "네… 제가 지금 무엇이 문제인지, 어떤 목표로 치료를 받게 되는지 조금 더 알고 싶어요."
                 ))
@@ -881,7 +1003,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
     elif category == "report_intro":
         if not st.session_state.interaction_completed:
             responses.append(system_message(
-                "SBAR 보고 전, 환자와 현재 문제·공동 목표·목표달성 방법에 대해 먼저 공유하고 합의하세요."
+                "SBAR 보고 전, 환자와 현재 문제, 간호목표, 목표달성 방법을 먼저 공유하고 환자의 이해와 참여 의사를 확인하세요."
             ))
         else:
             responses.append(patient_message("네… 의사 선생님께 빨리 말씀드려 주세요. 가슴이 계속 답답해서 너무 무서워요…"))
@@ -890,7 +1012,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
     elif category == "report_detail":
         if not st.session_state.interaction_completed:
             responses.append(system_message(
-                "SBAR 보고 전 상호작용 단계를 완료하세요: 문제 확인, 공동 목표 설정, 방법 제시, 협조 합의가 필요합니다."
+                "SBAR 보고 전 상호작용 단계를 완료하세요: 문제 확인, 간호목표 공유, 방법 설명, 환자의 이해와 참여 확인이 필요합니다."
             ))
         else:
             st.session_state.sbar_reported = True
@@ -914,7 +1036,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                     "네… 산소랑 약이 왜 필요한지는 알겠어요. 아직 무섭긴 한데, 통증이 줄 수 있다면 해주세요…"
                 ))
                 responses.append(system_message(
-                    "중재 설명 및 협조 형성이 완료되었습니다. 이제 처방 기반 중재를 수행할 수 있습니다."
+                    "중재 설명 및 이해와 참여 확인이 완료되었습니다. 이제 처방 기반 중재를 수행할 수 있습니다."
                 ))
             else:
                 missing = []
@@ -923,7 +1045,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                 if not st.session_state.intervention_purpose_explained:
                     missing.append("중재 목적 설명")
                 if not st.session_state.intervention_cooperation_requested:
-                    missing.append("중재 협조 요청")
+                    missing.append("중재 참여 확인")
                 responses.append(patient_message(
                     "선생님… 산소랑 약이 왜 필요한지, 진행해도 되는 건지 조금 더 설명해 주세요."
                 ))
@@ -941,7 +1063,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             responses.append(patient_message(
                 "선생님… 산소랑 약을 왜 해야 하는지 먼저 설명해주실 수 있을까요? 무섭지만 설명 들으면 협조할게요…"
             ))
-            responses.append(system_message("중재 수행 전 산소 또는 약물 설명, 중재 목적 설명, 협조 확인이 필요합니다."))
+            responses.append(system_message("중재 수행 전 산소 또는 약물 설명, 중재 목적 설명, 환자의 이해와 참여 확인이 필요합니다."))
         else:
             st.session_state.intervention_done = True
             st.session_state.cooperation_formed = True
@@ -969,6 +1091,13 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         else:
             responses.append(patient_message(POST_INTERVENTION_STATUS["message"]))
 
+        st.session_state.ended = True
+        responses.append(system_message(
+            "중재 후 재사정과 목표달성 확인이 완료되었습니다. "
+            "시뮬레이션이 종료되었습니다. 이제 아래의 디브리핑 단계로 이동하여 "
+            "환자 사정, 검사 및 중재 설명, SBAR 보고, 중재 수행, 재사정 과정을 성찰해 주세요."
+        ))
+
     elif category == "closing_therapeutic":
         responses.append(patient_message("네… 다시 아프거나 숨이 차면 바로 말씀드릴게요. 옆에서 봐주시니까 조금 안심돼요…"))
 
@@ -976,8 +1105,8 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         responses.append(patient_message("그렇게 말씀해주시니까 조금은 안심돼요… 그래도 가슴이 계속 답답해서 아직 무서워요."))
 
     else:
-        responses.append(patient_message("선생님… 가슴이 너무 조이고 숨쉬기가 힘들어요. 저 지금 어떻게 되는 건가요…?"))
-        responses.append(system_message("환자의 주호소, 통증 양상, 활력징후, 병력 및 위험요인을 단계적으로 사정하세요."))
+        responses.append(patient_message("네… 제가 잘 이해하지 못했어요. 다시 한 번 쉽게 말씀해 주실 수 있을까요?"))
+        responses.append(feedback_message(get_current_guidance()))
 
     return responses
 
@@ -987,34 +1116,66 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 # ------------------------------------------------------------
 init_state()
 
+# 프로그램 설명 추가: 첫 화면 왼쪽 상단에서 프로그램의 목적과 흐름을 안내한다.
+st.sidebar.markdown("""
+### 🫀 프로그램 설명
+
+이 프로그램은 **급성심근경색(AMI) 의심 환자**를 대상으로 한  
+**챗봇 가상환자 시뮬레이션 학습 프로그램**입니다.
+
+학습자는 응급실 학생간호사 역할로  
+환자 사정, 검사 설명, SBAR 보고, 중재 수행, 재사정을 단계적으로 수행합니다.
+
+본 프로그램은 **King의 목표달성이론 흐름**에 따라  
+지각 → 판단 → 행위/반응 → 상호작용 → 교류작용 → 목표달성 순서로 진행됩니다.
+""")
+
+st.sidebar.markdown("---")
+
 st.sidebar.header("📋 진행 상태")
-for key, value in st.session_state.checklist.items():
-    st.sidebar.write(f"{'✅' if value else '⬜'} {key}")
+st.sidebar.caption("'진행상태 보기'를 클릭하면 1단계부터 12단계까지 전체 흐름과 완료 여부를 확인할 수 있습니다.")
+
+with st.sidebar.expander("📋 진행상태 보기: 1단계~12단계", expanded=False):
+    st.markdown(
+        """
+        **진행상태 안내**  
+        - 모든 항목을 한 번에 완벽하게 작성해야 다음 단계로 넘어가는 것은 아닙니다.  
+        - 학생의 질문과 설명을 누적 인식하여, 단계별 핵심 수행 내용이 충족되면 완료로 표시됩니다.  
+        - 단, 검사결과 확인, SBAR 보고, 의사 처방 확인, 중재 수행, 디브리핑은 정해진 순서에 따라 진행됩니다.
+        """
+    )
+    st.markdown("---")
+    for key, value in st.session_state.checklist.items():
+        desc, criteria = STEP_HELP.get(key, ("단계 설명이 없습니다.", "완료 기준이 설정되지 않았습니다."))
+        st.markdown(f"**{'✅' if value else '⬜'} {key}**")
+        st.write(f"- 해야 할 일: {desc}")
+        st.write(f"- 완료 기준: {criteria}")
+        st.markdown("")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔎 세부 진행 상태")
 
-with st.sidebar.expander("검사 설명"):
+with st.sidebar.expander("검사 설명 세부 항목", expanded=False):
     st.write(f"{'✅' if st.session_state.ecg_explained else '⬜'} 심전도 검사 설명")
     st.write(f"{'✅' if st.session_state.blood_test_explained else '⬜'} 혈액검사 설명")
-    st.write(f"{'✅' if st.session_state.exam_cooperation_requested else '⬜'} 검사 협조 요청")
+    st.write(f"{'✅' if st.session_state.exam_cooperation_requested else '⬜'} 검사 참여 확인")
 
-with st.sidebar.expander("상호작용"):
+with st.sidebar.expander("상호작용 세부 항목", expanded=False):
     st.write(f"{'✅' if st.session_state.problem_identified else '⬜'} 환자 문제 확인")
-    st.write(f"{'✅' if st.session_state.goal_set else '⬜'} 공동 목표 설정")
-    st.write(f"{'✅' if st.session_state.means_explained else '⬜'} 목표달성 방법 제시")
-    st.write(f"{'✅' if st.session_state.agreement_obtained else '⬜'} 방법 합의/협조 확인")
+    st.write(f"{'✅' if st.session_state.goal_set else '⬜'} 간호목표 공유")
+    st.write(f"{'✅' if st.session_state.means_explained else '⬜'} 목표달성 방법 설명")
+    st.write(f"{'✅' if st.session_state.agreement_obtained else '⬜'} 환자의 이해와 참여 확인")
 
-with st.sidebar.expander("중재 설명"):
+with st.sidebar.expander("중재 설명 세부 항목", expanded=False):
     st.write(f"{'✅' if st.session_state.oxygen_explained else '⬜'} 산소요법 설명")
     st.write(f"{'✅' if st.session_state.medication_explained else '⬜'} 약물투여 설명")
     st.write(f"{'✅' if st.session_state.intervention_purpose_explained else '⬜'} 중재 목적 설명")
     st.write(f"{'✅' if st.session_state.side_effect_guidance_given else '⬜'} 이상반응/불편감 안내")
-    st.write(f"{'✅' if st.session_state.intervention_cooperation_requested else '⬜'} 중재 협조 요청")
+    st.write(f"{'✅' if st.session_state.intervention_cooperation_requested else '⬜'} 중재 참여 확인")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🎯 목표 달성 지표")
-st.sidebar.write(f"{'✅' if st.session_state.cooperation_formed else '⬜'} 환자 협조 형성")
+st.sidebar.write(f"{'✅' if st.session_state.cooperation_formed else '⬜'} 환자의 이해와 참여 확인")
 st.sidebar.write(f"{'✅' if st.session_state.intervention_done else '⬜'} 처방 기반 중재 수행")
 st.sidebar.write(f"{'✅' if st.session_state.goal_achieved else '⬜'} 통증·호흡곤란·불안 완화 확인")
 
@@ -1049,9 +1210,9 @@ with col2:
 # ------------------------------------------------------------
 if st.session_state.started:
     st.subheader("💬 시뮬레이션 대화")
+    st.caption("환자 응답, 시스템 안내, 의사 처방, 학습 안내가 색상과 라벨로 구분됩니다.")
     for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.write(msg["content"])
+        render_message(msg)
 
 if st.session_state.started and not st.session_state.ended:
     user_input = st.chat_input("환자에게 질문하거나 간호수행 내용을 입력하세요.")
@@ -1072,6 +1233,8 @@ if st.session_state.started:
         ready_for_debriefing = st.session_state.reassessment_done or st.session_state.goal_achieved
         if not ready_for_debriefing:
             st.info("중재 후 재사정과 목표달성 확인까지 진행한 후 디브리핑을 시작하는 것을 권장합니다.")
+        else:
+            st.success("시뮬레이션이 종료되었습니다. 아래 버튼을 눌러 디브리핑을 시작하세요.")
         if st.button("디브리핑 보기", disabled=not ready_for_debriefing):
             mark_checklist("12. 성찰: 디브리핑")
             st.session_state.ended = True
@@ -1082,6 +1245,13 @@ if st.session_state.started:
         st.success("시뮬레이션이 종료되었습니다. 아래 질문을 바탕으로 성찰해보세요.")
         for idx, question in enumerate(DEBRIEFING_QUESTIONS, start=1):
             st.write(f"{idx}. {question}")
+
+        st.markdown("### 🔍 참고 응답 예시 선택 보기")
+        st.caption("정답을 먼저 보여주는 방식이 아니라, 학습자가 필요할 때 클릭하여 자신의 응답을 점검하도록 구성했습니다.")
+        for title, examples in DEBRIEFING_EXAMPLES.items():
+            with st.expander(title):
+                for example in examples:
+                    st.write(f"- {example}")
 
         st.markdown("### ✍ 디브리핑 답변 작성")
         st.text_area("1번 질문 답변", key="d1")
@@ -1119,7 +1289,7 @@ if st.session_state.started:
 # ------------------------------------------------------------
 st.markdown("---")
 st.caption(
-    "본 프로토타입은 King의 목표달성이론 중 지각 → 판단 → 행위 → 반응 → 상호작용 → 교류작용 → 목표달성 과정을 한 방향으로 "
+    "본 프로토타입은 King의 목표달성이론을 바탕으로 지각 → 판단 → 행위/반응 → 상호작용 → 교류작용 → 목표달성 흐름을 한 방향으로 "
     "AMI 챗봇 가상환자 시뮬레이션 흐름에 반영한 연구용 예시입니다. "
     "검사 설명, 상호작용, 중재 설명은 학생의 짧은 발화를 누적하여 인식하도록 설계되었습니다."
 )
