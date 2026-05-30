@@ -1127,10 +1127,8 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 init_state()
 
 # 프로그램 설명 추가: 첫 화면 왼쪽 상단에서 프로그램의 목적과 흐름을 안내한다.
-st.sidebar.info("""
-🫀 **AMI 챗봇 가상환자 시뮬레이션**
-
-응급실 학생간호사 역할로 급성심근경색 의심 환자를 사정하고, 검사 설명, SBAR 보고, 중재 수행, 재사정을 연습하는 프로그램입니다.
+st.sidebar.markdown("""
+### 🫀 프로그램 설명
 """)
 
 st.sidebar.markdown("---")
