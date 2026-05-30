@@ -9,12 +9,12 @@ from openai import OpenAI
 # AMI 챗봇 가상환자 시뮬레이션
 # - 챗봇 역할: 급성심근경색 의심 환자 '김심근'
 # - 학습자 역할: 응급실 학생간호사
-# - 시스템 역할: 활력징후, 검사결과, 의사 처방만 제시
+# - 시스템 역할: 검사결과, 처방, 진행 조건 안내
 # - 설계 원칙:
 #   1) 환자 정보/검사결과/처방/중재 후 반응은 고정값으로 유지
 #   2) King 목표달성이론 흐름을 한 방향으로 반영
 #   3) 챗봇은 환자 역할만 수행하고 의사/교수자/평가자 역할을 하지 않음
-#   4) 누적 인식으로 핵심 단계 누락을 방지함
+#   4) 단계별 진행 조건과 누적 인식으로 핵심 단계 누락을 방지함
 # ============================================================
 
 # ------------------------------------------------------------
@@ -43,13 +43,12 @@ st.markdown("""
 **역할 구분**
 - **챗봇:** 급성심근경색이 의심되는 62세 남성 환자 *김심근* 역할만 수행합니다.
 - **학습자:** 응급실 학생간호사 역할로 환자를 사정하고, 검사와 중재를 설명하며, SBAR 보고와 재사정을 수행합니다.
-- **시스템:** 활력징후, 검사결과, 의사 처방만 제시합니다.
+- **시스템:** 활력징후, 검사결과, 의사 처방, 진행 조건을 안내합니다.
 
 **오류 방지 설계**
 - 환자 기본정보, 활력징후, 검사결과, 의사 처방, 중재 후 반응은 **고정값**으로 제시됩니다.
-- 챗봇은 **의사, 간호사, 교수자, 평가자 역할을 하지 않으며**, 급성심근경색이 의심되는 환자 역할만 수행합니다.
-- 활력징후, 검사결과, 의사 처방은 환자 응답이 아니라 **시스템 정보**로만 제시됩니다.
-- 시스템은 학습 안내나 평가 피드백을 제공하지 않습니다.
+- 챗봇은 **의사, 교수자, 평가자 역할을 하지 않으며**, 급성심근경색이 의심되는 환자 역할만 수행합니다.
+- 검사 설명, 환자의 이해와 참여 확인, SBAR 보고, 중재 설명, 중재 수행, 중재 후 재사정 등 핵심 단계가 누락되지 않도록 **단계별 진행 조건**을 설정했습니다.
 - 학생이 한 문장으로 완성된 답변을 입력하지 않아도, 짧은 발화를 단계별로 입력하면 프로그램이 이를 **누적 인식**하도록 구성했습니다.
 - OpenAI API는 선택 사항이며, 사용 시에도 **환자 말투 자연화**에만 사용됩니다. 환자 정보, 검사결과, 처방, 중재 후 반응은 임의로 변경되지 않습니다.
 
@@ -68,6 +67,15 @@ st.markdown("""
 if not api_key:
     st.warning("OPENAI_API_KEY가 설정되지 않았습니다. 규칙기반 응답만 사용됩니다.")
 
+st.info("""
+📌 **진행상태 완료 기준 안내**
+
+- 진행상태는 학습자의 수행 과정을 돕기 위한 체크리스트입니다.
+- 모든 항목을 한 번에 완벽하게 작성해야 다음 단계로 넘어가는 것은 아닙니다.
+- 학생이 입력한 질문과 설명은 단계별로 누적 인식되며, 각 단계의 핵심 수행 내용이 충족되면 해당 단계가 완료로 표시됩니다.
+- 다만 **검사결과 확인, SBAR 보고, 의사 처방 확인, 중재 수행, 디브리핑**은 정해진 순서에 따라 진행됩니다.
+- 각 단계의 해야 할 일과 완료 기준은 왼쪽 진행상태를 클릭하여 확인할 수 있습니다.
+""")
 
 # ------------------------------------------------------------
 # 4. 고정 데이터
@@ -251,16 +259,7 @@ def patient_message(text: str) -> Dict[str, str]:
 
 
 def system_message(text: str) -> Dict[str, str]:
-    """내부 진행 제어용 메시지입니다. 화면에는 객관적 임상자료만 표시됩니다."""
     return {"role": "assistant", "content": f"[시스템] {text}"}
-
-
-def vital_signs_message(text: str) -> Dict[str, str]:
-    return {"role": "assistant", "content": f"[활력징후] {text}"}
-
-
-def lab_results_message(text: str) -> Dict[str, str]:
-    return {"role": "assistant", "content": f"[검사결과] {text}"}
 
 
 def mark_checklist(item: str) -> None:
@@ -281,9 +280,12 @@ def doctor_message(text: str) -> Dict[str, str]:
     return {"role": "assistant", "content": f"[의사 처방] {text}"}
 
 
+def feedback_message(text: str) -> Dict[str, str]:
+    return {"role": "assistant", "content": f"[학습 안내] {text}"}
+
 
 def render_message(msg: Dict[str, str]) -> None:
-    """환자 응답, 학생 입력, 활력징후, 검사결과, 의사 처방을 시각적으로 구분한다."""
+    """환자 응답, 시스템 안내, 의사 처방, 학습 안내, 학생 입력을 시각적으로 구분한다."""
     raw = msg.get("content", "")
     role = msg.get("role", "assistant")
 
@@ -291,41 +293,56 @@ def render_message(msg: Dict[str, str]) -> None:
         label, body, bg, border = "학생간호사", raw, "#E8F1FF", "#74A7FF"
     elif raw.startswith("[환자]"):
         label, body, bg, border = "환자 김심근", raw.replace("[환자]", "", 1).strip(), "#FFF5E8", "#F2A65A"
-    elif raw.startswith("[활력징후]"):
-        label, body, bg, border = "활력징후", raw.replace("[활력징후]", "", 1).strip(), "#EAF2FF", "#4C8DFF"
-    elif raw.startswith("[검사결과]"):
-        label, body, bg, border = "검사결과", raw.replace("[검사결과]", "", 1).strip(), "#F1F3F5", "#868E96"
     elif raw.startswith("[의사 처방]"):
         label, body, bg, border = "의사 처방", raw.replace("[의사 처방]", "", 1).strip(), "#EAF7EA", "#65B96F"
-    elif raw.startswith("[시스템]"):
-        # 시스템 메시지는 활력징후, 검사결과, 의사 처방에 해당하는 객관적 임상자료만 화면에 표시한다.
-        body = raw.replace("[시스템]", "", 1).strip()
-        if body.startswith("초기 활력징후"):
-            label, bg, border = "활력징후", "#EAF2FF", "#4C8DFF"
-        elif body.startswith("검사결과"):
-            label, bg, border = "검사결과", "#F1F3F5", "#868E96"
-        elif "의사 처방이 제시됩니다" in body:
-            label, bg, border = "의사 처방", "#EAF7EA", "#65B96F"
-            body = body.split("의사 처방이 제시됩니다.", 1)[-1].strip()
-        else:
-            return
     elif raw.startswith("[학습 안내]"):
-        return
+        label, body, bg, border = "학습 안내", raw.replace("[학습 안내]", "", 1).strip(), "#F5F0FF", "#9B7BEA"
+    elif raw.startswith("[시스템]"):
+        label, body, bg, border = "시스템 안내", raw.replace("[시스템]", "", 1).strip(), "#F1F3F5", "#868E96"
     else:
         label, body, bg, border = "안내", raw, "#F8F9FA", "#ADB5BD"
 
-    text_color = "#111827"
-    subtext_color = "#374151"
+text_color = "#111827"
+subtext_color = "#374151"
 
-    html = f"""
-    <div style="background:{bg}; border-left:6px solid {border}; padding:12px 14px;
-                border-radius:10px; margin:8px 0; line-height:1.55; white-space:pre-wrap;
-                color:{text_color}; box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <div style="font-weight:700; margin-bottom:4px; color:{text_color};">{escape(label)}</div>
-        <div style="color:{subtext_color};">{escape(body)}</div>
-    </div>
-    """
+html = f"""
+<div style="background:{bg}; border-left:6px solid {border}; padding:12px 14px;
+            border-radius:10px; margin:8px 0; line-height:1.55; white-space:pre-wrap;
+            color:{text_color}; box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+    <div style="font-weight:700; margin-bottom:4px; color:{text_color};">{escape(label)}</div>
+    <div style="color:{subtext_color};">{escape(body)}</div>
+</div>
+"""
     st.markdown(html, unsafe_allow_html=True)
+
+
+def get_current_guidance() -> str:
+    """처음 문구를 반복하지 않고 현재 단계에 맞는 재질문/안내를 제공한다."""
+    if not st.session_state.intro_done:
+        return "먼저 자기소개와 환자 확인을 해보세요. 예: ‘안녕하세요, 학생간호사입니다. 성함이 어떻게 되세요?’"
+    if not st.session_state.pain_symptom_done:
+        return "현재 단계에서는 통증 위치, 양상, 시작 시점, NRS 점수, 방사통, 동반증상을 확인해보세요."
+    if not st.session_state.vitals_done:
+        return "다음으로 활력징후를 확인해보세요. 예: ‘현재 활력징후를 확인하겠습니다.’"
+    if not st.session_state.history_risk_done:
+        return "과거력, 복용약, 흡연력, 가족력, 알레르기 여부 등 위험요인을 확인해보세요."
+    if not st.session_state.ami_judged:
+        return "수집한 자료를 바탕으로 AMI 가능성을 판단하고, 심전도와 심근효소 검사의 필요성을 인식해보세요."
+    if not st.session_state.exam_explained:
+        return "심전도와 혈액검사가 왜 필요한지 설명하고, 환자의 이해와 검사 참여 의사를 확인해보세요."
+    if not st.session_state.labs_shown:
+        return "검사 설명과 참여 확인이 완료되었습니다. 이제 검사결과를 확인해보세요."
+    if not st.session_state.interaction_completed:
+        return "검사결과를 바탕으로 환자 문제를 확인하고, 간호목표와 목표달성 방법을 환자에게 쉽게 공유해보세요."
+    if not st.session_state.sbar_reported:
+        return "SBAR 형식으로 환자 상태, 배경, 사정 결과, 제안을 포함하여 의사에게 보고해보세요."
+    if not st.session_state.intervention_explained:
+        return "의사 처방을 바탕으로 산소요법과 약물의 목적을 설명하고, 환자의 이해와 참여 의사를 확인해보세요."
+    if not st.session_state.intervention_done:
+        return "이제 처방에 따라 산소요법, NTG, Aspirin, 12-lead ECG 재확인을 수행해보세요."
+    if not st.session_state.reassessment_done:
+        return "중재 후 통증, 호흡곤란, 불안 정도를 재사정해보세요."
+    return "시뮬레이션 흐름은 완료되었습니다. 디브리핑에서 수행 과정을 성찰해보세요."
 
 
 STEP_HELP: Dict[str, Tuple[str, str]] = {
@@ -363,13 +380,10 @@ def naturalize_with_openai(user_input: str, clinical_fact: str, tone: str = "불
 4. 진단, 처방, 평가, 교육 피드백을 임의로 생성하지 마세요.
 5. 전문용어를 먼저 사용하지 말고, 환자가 실제로 느끼는 증상 중심으로 말하세요.
 6. 너무 반듯한 문장보다 실제 응급실 환자처럼 불안하고 힘든 말투로 답하세요.
-7. 가능한 경우 답변에는 다음 요소 중 2개 이상을 자연스럽게 포함하세요: 현재 느끼는 증상, 불안/두려움, 학생에게 묻는 짧은 질문.
+7. 가능한 경우 답변에는 다음 요소 중 2개 이상을 자연스럽게 포함하세요: 현재 느끼는 증상, 불안/두려움, 학생에게 묻는 짧은 질문, 검사·중재에 대한 걱정 또는 협조 의사.
 8. 답변은 1~3문장으로 하되, 말끝은 자연스럽게 흐릴 수 있습니다.
-9. 학생이 먼저 검사명이나 중재명을 설명하기 전에는 환자가 '심전도', '혈액검사', '산소', '약물', '니트로글리세린', '아스피린' 같은 의학적 검사명이나 중재명을 먼저 말하거나 요구하지 마세요.
-10. 환자는 '빨리 확인해주세요', '빨리 도와주세요'처럼 일반적인 불안 표현은 할 수 있지만, 특정 검사나 처방을 먼저 요청하지 마세요.
-11. 학생이 검사명이나 중재명을 먼저 설명한 경우에만 환자는 '네, 해주세요', '설명을 들으니 협조하겠습니다'처럼 반응할 수 있습니다.
-12. 예: “가슴이 너무 조여요… 숨도 좀 차고요. 저 정말 괜찮은 건가요?”
-"""
+9. 예: “가슴이 너무 조여요… 숨도 좀 차고요. 저 정말 괜찮은 건가요?
+”"""
 
     prompt = f"""
 학생 입력:
@@ -388,10 +402,6 @@ def naturalize_with_openai(user_input: str, clinical_fact: str, tone: str = "불
             input=prompt,
         )
         text = response.output_text.strip()
-        forbidden_before_student_explanation = ["심전도", "혈액검사", "혈액 검사", "산소", "약물", "니트로글리세린", "아스피린"]
-        student_has_explained_medical_terms = any(term.lower() in user_input.lower() for term in forbidden_before_student_explanation)
-        if text and not student_has_explained_medical_terms and any(term in text for term in forbidden_before_student_explanation):
-            return clinical_fact
         return text if text else clinical_fact
     except Exception:
         return clinical_fact
@@ -753,29 +763,17 @@ def classify_input(user_text: str) -> str:
     if has_any(text, history_keywords):
         return "history"
 
-    # 활력징후 확인 후 학생의 안심/설명 발화가 검사결과 확인으로 오분류되지 않도록 분류한다.
-    vital_reassurance_keywords = [
-        "정상 범위보다 높", "정상범위보다 높", "정상보다 높",
-        "혈압이 높", "맥박이 빠르", "호흡수가 빠르", "산소포화도가 낮",
-        "괜찮을 거예요", "괜찮습니다", "괜찮아요", "걱정하지 마세요",
-        "안정하세요", "제가 계속 확인하겠습니다", "계속 확인하겠습니다",
-        "계속 관찰하겠습니다", "옆에 있겠습니다"
-    ]
-    if (
-        st.session_state.vitals_shown
-        and not st.session_state.exam_explained
-        and has_any(text, vital_reassurance_keywords)
-    ):
-        return "vital_reassurance"
-
     # 검사결과 확인/임상 판단: "검사결과"가 "검사 설명"으로 오분류되지 않도록 먼저 분류한다.
     labs_keywords = [
         "검사결과", "검사 결과", "검사수치", "검사 수치",
         "결과 확인", "결과 해석", "결과 토대로",
         "심전도 결과", "혈액검사 결과", "lab",
+        "환자 상태", "상태 판단", "정상 수치", "정상범위",
+        "비정상 수치", "이상 수치", "의미있는 자료", "의미 있는 자료",
         "st 상승", "st분절", "st 분절", "troponin", "트로포닌",
         "ck-mb", "ckmb", "ami", "ami 의심", "급성심근경색",
-        "심근경색", "stemi", "유추되는 질환명", "감별진단"
+        "심근경색", "stemi", "유추되는 질환명", "감별진단",
+        "다른 질병", "다음 조치", "우선 조치", "처치 필요"
     ]
     if has_any(text, labs_keywords):
         return "labs"
@@ -879,7 +877,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         st.session_state.vitals_shown = True
         st.session_state.vitals_done = True
         mark_checklist("3. 지각: 활력징후 확인")
-        responses.append(vital_signs_message(
+        responses.append(system_message(
             "초기 활력징후\n"
             f"- BP: {VITAL_SIGNS['BP']}\n"
             f"- HR: {VITAL_SIGNS['HR']}\n"
@@ -888,11 +886,6 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             f"- BT: {VITAL_SIGNS['BT']}"
         ))
         responses.append(patient_message("혈압이랑 맥박이 많이 높은 거예요…? 가슴도 계속 답답한데, 저 지금 위험한 상태인가요?"))
-
-    elif category == "vital_reassurance":
-        responses.append(patient_message(
-            "네… 그래도 가슴이 계속 답답하고 숨이 차서 너무 불안해요. 저 정말 괜찮은 건가요…?"
-        ))
 
     elif category == "family_history":
         st.session_state.history_risk_done = True
@@ -967,7 +960,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         else:
             st.session_state.labs_shown = True
             mark_checklist("7. 상호작용: 검사결과 기반 문제 구체화")
-            responses.append(lab_results_message(
+            responses.append(system_message(
                 "검사결과\n"
                 f"- ECG: {LAB_RESULTS['ECG']}\n"
                 f"- Troponin I: {LAB_RESULTS['Troponin I']}\n"
@@ -1117,6 +1110,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 
     else:
         responses.append(patient_message("네… 제가 잘 이해하지 못했어요. 다시 한 번 쉽게 말씀해 주실 수 있을까요?"))
+        responses.append(feedback_message(get_current_guidance()))
 
     return responses
 
@@ -1211,7 +1205,7 @@ with col2:
 # ------------------------------------------------------------
 if st.session_state.started:
     st.subheader("💬 시뮬레이션 대화")
-    st.caption("환자 응답, 활력징후, 검사결과, 의사 처방이 색상과 라벨로 구분됩니다.")
+    st.caption("환자 응답, 시스템 안내, 의사 처방, 학습 안내가 색상과 라벨로 구분됩니다.")
     for msg in st.session_state.messages:
         render_message(msg)
 
