@@ -1079,8 +1079,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             st.session_state.order_shown = True
             mark_checklist("9. 교류작용: SBAR 보고 및 처방 확인")
             responses.append(system_message(
-                "의사 처방\n"
-                + "\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
+                "\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
             ))
 
     elif category == "intervention_explanation":
