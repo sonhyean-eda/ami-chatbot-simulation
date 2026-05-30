@@ -1090,21 +1090,21 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             responses.append(patient_message("네… 의사 선생님께 빨리 말씀드려 주세요. 가슴이 계속 답답해서 너무 무서워요…"))
             responses.append(system_message("SBAR 형식으로 환자 상태, 배경, 사정결과, 제안을 포함하여 보고하면 처방이 제시됩니다."))
 
-elif category == "report_detail":
-    if not st.session_state.interaction_completed:
-        responses.append(system_message(
-            "SBAR 보고 전 상호작용 단계를 완료하세요: 문제 확인, 간호목표 공유, 방법 설명, 환자의 이해와 참여 확인이 필요합니다."
-        ))
-    else:
-        st.session_state.sbar_reported = True
-        st.session_state.order_shown = True
-        mark_checklist("9. 교류작용: SBAR 보고 및 처방 확인")
+    elif category == "report_detail":
+        if not st.session_state.interaction_completed:
+            responses.append(system_message(
+                "SBAR 보고 전 상호작용 단계를 완료하세요: 문제 확인, 간호목표 공유, 방법 설명, 환자의 이해와 참여 확인이 필요합니다."
+            ))
+        else:
+            st.session_state.sbar_reported = True
+            st.session_state.order_shown = True
+            mark_checklist("9. 교류작용: SBAR 보고 및 처방 확인")
 
-        order_text = (
-            "의사 처방\n"
-            + "\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
-        )
-        responses.append(order_message(order_text))
+            order_text = (
+                "의사 처방\n"
+                + "\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
+            )
+            responses.append(order_message(order_text))
 
     elif category == "intervention_explanation":
         if not st.session_state.order_shown:
