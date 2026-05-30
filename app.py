@@ -302,17 +302,17 @@ def render_message(msg: Dict[str, str]) -> None:
     else:
         label, body, bg, border = "안내", raw, "#F8F9FA", "#ADB5BD"
 
-text_color = "#111827"
-subtext_color = "#374151"
+    text_color = "#111827"
+    subtext_color = "#374151"
 
-html = f"""
-<div style="background:{bg}; border-left:6px solid {border}; padding:12px 14px;
-            border-radius:10px; margin:8px 0; line-height:1.55; white-space:pre-wrap;
-            color:{text_color}; box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-    <div style="font-weight:700; margin-bottom:4px; color:{text_color};">{escape(label)}</div>
-    <div style="color:{subtext_color};">{escape(body)}</div>
-</div>
-"""
+    html = f"""
+    <div style="background:{bg}; border-left:6px solid {border}; padding:12px 14px;
+                border-radius:10px; margin:8px 0; line-height:1.55; white-space:pre-wrap;
+                color:{text_color}; box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <div style="font-weight:700; margin-bottom:4px; color:{text_color};">{escape(label)}</div>
+        <div style="color:{subtext_color};">{escape(body)}</div>
+    </div>
+    """
     st.markdown(html, unsafe_allow_html=True)
 
 
