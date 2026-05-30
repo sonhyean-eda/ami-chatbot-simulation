@@ -348,9 +348,30 @@ def render_message(msg: Dict[str, str]) -> None:
         border = "#495057"
         emoji = "💊"
 
-    # 기존 [시스템] 메시지는 객관적 임상자료가 아닌 진행 조건 안내일 수 있으므로 화면에 표시하지 않음
+    # 기존 [시스템] 메시지 중 객관적 임상자료는 표시하고, 진행 조건 안내는 숨김
     elif raw.startswith("[시스템]"):
-        return
+        system_body = raw.replace("[시스템]", "", 1).strip()
+
+        if system_body.startswith("의사 처방") or "O₂" in system_body or "NTG" in system_body or "Aspirin" in system_body:
+            label = "시스템 | 의사 처방"
+            body = system_body
+            bg = "#F1F3F5"
+            border = "#495057"
+            emoji = "💊"
+        elif system_body.startswith("초기 활력징후") or "BP:" in system_body or "SpO₂" in system_body:
+            label = "시스템 | 활력징후"
+            body = system_body
+            bg = "#F1F3F5"
+            border = "#495057"
+            emoji = "📊"
+        elif system_body.startswith("검사결과") or "Troponin" in system_body or "CK-MB" in system_body:
+            label = "시스템 | 검사결과"
+            body = system_body
+            bg = "#F1F3F5"
+            border = "#495057"
+            emoji = "🧪"
+        else:
+            return
 
     # 학습 안내는 표시하지 않음
     elif raw.startswith("[학습 안내]"):
@@ -1069,18 +1090,21 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             responses.append(patient_message("네… 의사 선생님께 빨리 말씀드려 주세요. 가슴이 계속 답답해서 너무 무서워요…"))
             responses.append(system_message("SBAR 형식으로 환자 상태, 배경, 사정결과, 제안을 포함하여 보고하면 처방이 제시됩니다."))
 
-    elif category == "report_detail":
-        if not st.session_state.interaction_completed:
-            responses.append(system_message(
-                "SBAR 보고 전 상호작용 단계를 완료하세요: 문제 확인, 간호목표 공유, 방법 설명, 환자의 이해와 참여 확인이 필요합니다."
-            ))
-        else:
-            st.session_state.sbar_reported = True
-            st.session_state.order_shown = True
-            mark_checklist("9. 교류작용: SBAR 보고 및 처방 확인")
-            responses.append(system_message(
-                "\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
-            ))
+elif category == "report_detail":
+    if not st.session_state.interaction_completed:
+        responses.append(system_message(
+            "SBAR 보고 전 상호작용 단계를 완료하세요: 문제 확인, 간호목표 공유, 방법 설명, 환자의 이해와 참여 확인이 필요합니다."
+        ))
+    else:
+        st.session_state.sbar_reported = True
+        st.session_state.order_shown = True
+        mark_checklist("9. 교류작용: SBAR 보고 및 처방 확인")
+
+        order_text = (
+            "의사 처방\n"
+            + "\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
+        )
+        responses.append(order_message(order_text))
 
     elif category == "intervention_explanation":
         if not st.session_state.order_shown:
