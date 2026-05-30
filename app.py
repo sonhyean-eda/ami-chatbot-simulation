@@ -655,9 +655,11 @@ def update_intervention_explanation_state(text: str) -> List[str]:
         st.session_state.intervention_cooperation_requested = True
         updates.append("중재 참여 확인")
 
-    # 산소 또는 약물 중 하나 이상 + 목적 설명 + 협조 요청이면 중재 설명 완료
+    # 산소 설명 + 약물 설명 + 목적 설명 + 협조 요청이 모두 충족되면 중재 설명 완료
+    # 의사 처방에 산소요법과 약물투여가 모두 포함되어 있으므로 두 중재를 모두 설명하도록 한다.
     if (
-        (st.session_state.oxygen_explained or st.session_state.medication_explained)
+        st.session_state.oxygen_explained
+        and st.session_state.medication_explained
         and st.session_state.intervention_purpose_explained
         and st.session_state.intervention_cooperation_requested
     ):
@@ -1033,26 +1035,40 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 
         if st.session_state.exam_explained:
             responses.append(patient_message(
-                "아… 심장 상태를 확인하려고 심전도랑 피검사를 하는 거군요. 무섭긴 한데, 설명을 들으니까 해야 할 것 같아요… 빨리 해주세요."
+                "아… 심전도는 심장 상태를 보고, 피검사는 심장근육 손상 여부를 확인하는 거군요. "
+                "무섭긴 하지만 설명 들었으니까 검사 진행해 주세요…"
             ))
             responses.append(system_message("검사 설명 및 이해와 참여 확인이 완료되었습니다. 검사결과를 확인할 수 있습니다."))
         else:
-            missing = []
-            if not st.session_state.ecg_explained:
-                missing.append("심전도 검사 설명")
-            if not st.session_state.blood_test_explained:
-                missing.append("혈액검사 설명")
-            if not st.session_state.exam_cooperation_requested:
-                missing.append("검사 참여 확인")
-            responses.append(patient_message(
-                "네… 그런데 어떤 검사인지, 왜 해야 하는지 조금 더 설명해 주시면 안심하고 협조할 수 있을 것 같아요."
-            ))
-            responses.append(system_message(
-                "현재 인식된 내용: "
-                + (", ".join(updates) if updates else "없음")
-                + "\n추가로 필요한 내용: "
-                + ", ".join(missing)
-            ))
+            # 누적 인식된 내용에 따라 환자 반응을 구체화하여 같은 문장이 반복되지 않도록 한다.
+            if st.session_state.ecg_explained and not st.session_state.blood_test_explained:
+                responses.append(patient_message(
+                    "심전도로 심장 상태를 확인한다는 건 이해했어요… "
+                    "그런데 피검사는 왜 필요한지도 설명해 주실 수 있을까요?"
+                ))
+            elif st.session_state.blood_test_explained and not st.session_state.ecg_explained:
+                responses.append(patient_message(
+                    "피검사로 심장근육 손상 여부를 본다는 건 알겠어요… "
+                    "심전도 검사는 왜 필요한지도 쉽게 설명해 주세요."
+                ))
+            elif (
+                st.session_state.ecg_explained
+                and st.session_state.blood_test_explained
+                and not st.session_state.exam_cooperation_requested
+            ):
+                responses.append(patient_message(
+                    "심전도랑 피검사가 왜 필요한지는 이제 조금 이해했어요… "
+                    "제가 지금 검사에 협조하면 바로 진행할 수 있는 건가요?"
+                ))
+            elif updates:
+                responses.append(patient_message(
+                    "조금 이해됐어요… 심전도와 피검사가 각각 무엇을 확인하는 검사인지 한 번만 더 쉽게 설명해 주세요."
+                ))
+            else:
+                responses.append(patient_message(
+                    "선생님… 지금 어떤 검사를 하는 건지 몰라서 더 불안해요. "
+                    "왜 필요한 검사인지 쉽게 설명해 주시면 협조할게요…"
+                ))
 
     elif category == "labs":
         if not st.session_state.exam_explained:
@@ -1081,31 +1097,52 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 
             if st.session_state.interaction_completed:
                 responses.append(patient_message(
-                    "네… 지금 제일 힘든 게 가슴 통증이랑 숨찬 거, 그리고 너무 무서운 거예요. "
-                    "통증이 줄고 숨쉬기가 편해질 수 있다면 말씀하신 방법에 협조할게요…"
+                    "네… 제 문제는 가슴 통증과 숨찬 증상이고, 목표는 통증을 줄이고 숨쉬기 편해지는 거군요. "
+                    "산소와 약물치료가 필요하다는 것도 이해했어요… 말씀하신 방법에 협조할게요."
                 ))
                 responses.append(system_message(
                     "상호작용 단계가 완료되었습니다. 다음 단계로 SBAR 보고를 진행하세요."
                 ))
             else:
-                missing = []
-                if not st.session_state.problem_identified:
-                    missing.append("환자 문제 확인")
-                if not st.session_state.goal_set:
-                    missing.append("간호목표 공유")
-                if not st.session_state.means_explained:
-                    missing.append("목표달성 방법 설명")
-                if not st.session_state.agreement_obtained:
-                    missing.append("이해·참여 확인")
-                responses.append(patient_message(
-                    "네… 제가 지금 무엇이 문제인지, 어떤 목표로 치료를 받게 되는지 조금 더 알고 싶어요."
-                ))
-                responses.append(system_message(
-                    "현재 인식된 내용: "
-                    + (", ".join(updates) if updates else "없음")
-                    + "\n추가로 필요한 내용: "
-                    + ", ".join(missing)
-                ))
+                # 누적 인식된 내용에 따라 환자 반응을 구체화하여 같은 문장이 반복되지 않도록 한다.
+                if st.session_state.problem_identified and not st.session_state.goal_set:
+                    responses.append(patient_message(
+                        "네… 제일 힘든 건 가슴 통증이랑 숨찬 거예요. "
+                        "그럼 지금 치료 목표는 통증을 줄이고 숨쉬기 편하게 하는 건가요?"
+                    ))
+                elif st.session_state.goal_set and not st.session_state.problem_identified:
+                    responses.append(patient_message(
+                        "통증을 줄이고 숨쉬기 편해지는 게 목표라는 건 알겠어요… "
+                        "그런데 지금 제 상태에서 가장 문제가 되는 게 무엇인지 다시 설명해 주세요."
+                    ))
+                elif (
+                    st.session_state.problem_identified
+                    and st.session_state.goal_set
+                    and not st.session_state.means_explained
+                ):
+                    responses.append(patient_message(
+                        "제 문제와 목표는 이해했어요… "
+                        "그 목표를 위해 앞으로 어떤 치료나 간호를 받게 되는지 알려주세요."
+                    ))
+                elif (
+                    st.session_state.problem_identified
+                    and st.session_state.goal_set
+                    and st.session_state.means_explained
+                    and not st.session_state.agreement_obtained
+                ):
+                    responses.append(patient_message(
+                        "가슴 통증과 숨찬 증상을 줄이기 위해 산소랑 약물치료가 필요하다는 건 이해했어요… "
+                        "제가 협조하면 바로 진행할 수 있는 건가요?"
+                    ))
+                elif updates:
+                    responses.append(patient_message(
+                        "조금 이해됐어요… 제 문제, 치료 목표, 그리고 앞으로 받을 방법을 한 번만 더 연결해서 설명해 주세요."
+                    ))
+                else:
+                    responses.append(patient_message(
+                        "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. "
+                        "지금 제 문제와 치료 목표를 쉽게 설명해 주세요…"
+                    ))
 
     elif category == "report_intro":
         if not st.session_state.interaction_completed:
@@ -1142,24 +1179,41 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                 st.session_state.cooperation_formed = True
                 mark_checklist("10. 교류작용: 중재 설명 및 중재 수행")
                 responses.append(patient_message(
-                    "네… 산소와 약이 왜 필요한지 이해했어요. 무섭긴 하지만 설명해주신 대로 진행해 주세요…"
+                    "네… 산소는 숨쉬는 데 도움을 주고, 약은 가슴 통증을 줄이는 데 필요하다는 거군요. "
+                    "불편하면 바로 말씀드릴게요… 설명 들었으니 진행해 주세요."
                 ))
             else:
-                missing = []
-                if not (st.session_state.oxygen_explained or st.session_state.medication_explained):
-                    missing.append("산소 또는 약물 설명")
-                if not st.session_state.intervention_purpose_explained:
-                    missing.append("중재 목적 설명")
-                if not st.session_state.intervention_cooperation_requested:
-                    missing.append("진행 동의 확인")
-
-                if updates:
+                # 누적 인식된 내용에 따라 환자 반응을 구체화하여 같은 문장이 반복되지 않도록 한다.
+                if st.session_state.oxygen_explained and not st.session_state.medication_explained:
                     responses.append(patient_message(
-                        "네… 설명은 조금 이해됐어요. 그래도 제가 뭘 받게 되는지랑 진행해도 되는지 한 번만 더 쉽게 말씀해 주세요…"
+                        "산소가 심장 부담을 줄이는 데 도움이 된다는 건 알겠어요… "
+                        "그런데 약은 왜 필요한지도 설명해 주실 수 있을까요?"
+                    ))
+                elif st.session_state.medication_explained and not st.session_state.oxygen_explained:
+                    responses.append(patient_message(
+                        "약이 가슴 통증을 줄이는 데 도움이 된다는 건 알겠어요… "
+                        "산소는 왜 필요한지도 쉽게 설명해 주세요."
+                    ))
+                elif (
+                    st.session_state.oxygen_explained
+                    and st.session_state.medication_explained
+                    and not st.session_state.intervention_cooperation_requested
+                ):
+                    responses.append(patient_message(
+                        "산소와 약이 왜 필요한지는 이제 이해했어요… "
+                        "제가 불편하면 말씀드리면 되는 건지, 지금 진행해도 되는지 확인해 주세요."
+                    ))
+                elif not st.session_state.intervention_purpose_explained:
+                    responses.append(patient_message(
+                        "산소랑 약을 하는 건 알겠는데요… 제 가슴 통증이나 숨찬 증상에 어떤 도움이 되는지 조금 더 알고 싶어요."
+                    ))
+                elif not updates:
+                    responses.append(patient_message(
+                        "선생님… 지금 무엇을 하는 건지 조금 불안해요. 왜 필요한지 쉽게 설명해 주시면 협조할게요…"
                     ))
                 else:
                     responses.append(patient_message(
-                        "선생님… 지금 무엇을 하는 건지 조금 불안해요. 왜 필요한지 쉽게 설명해 주시면 협조할게요…"
+                        "조금 이해됐어요… 산소와 약이 각각 왜 필요한지, 그리고 진행해도 되는지까지 한 번만 더 확인해 주세요."
                     ))
 
     elif category == "intervention":
@@ -1167,9 +1221,10 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             responses.append(system_message("아직 의사 처방이 제시되지 않았습니다. SBAR 보고 후 처방을 확인하세요."))
         elif not st.session_state.intervention_explained:
             responses.append(patient_message(
-                "선생님… 산소랑 약을 왜 해야 하는지 먼저 설명해주실 수 있을까요? 무섭지만 설명 들으면 협조할게요…"
+                "선생님… 산소와 약을 바로 하기 전에 각각 왜 필요한지 설명해 주세요. "
+                "설명 듣고 진행해도 되는지 말씀드릴게요…"
             ))
-            responses.append(system_message("중재 수행 전 산소 또는 약물 설명, 중재 목적 설명, 환자의 이해와 참여 확인이 필요합니다."))
+            responses.append(system_message("중재 수행 전 산소 설명, 약물 설명, 중재 목적 설명, 환자의 이해와 참여 확인이 필요합니다."))
         else:
             st.session_state.intervention_done = True
             st.session_state.cooperation_formed = True
