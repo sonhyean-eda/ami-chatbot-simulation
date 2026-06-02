@@ -414,6 +414,91 @@ def doctor_message(text: str) -> Dict[str, str]:
 def feedback_message(text: str) -> Dict[str, str]:
     return {"role": "assistant", "content": f"[학습 안내] {text}"}
 
+def render_sbar_phone_window() -> None:
+    """전화 아이콘을 눌렀을 때 열리는 SBAR 전용 보고창."""
+    st.markdown("""
+    <style>
+    .sbar-phone-box {
+        background: #F8FAFC;
+        border: 1px solid #CBD5E1;
+        border-radius: 16px;
+        padding: 18px 20px;
+        margin: 14px 0 18px 0;
+        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.10);
+    }
+    .sbar-phone-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-bottom: 1px solid #CBD5E1;
+        padding-bottom: 10px;
+        margin-bottom: 12px;
+        color: #0F172A;
+        font-weight: 850;
+        font-size: 1.15rem;
+    }
+    .sbar-phone-caption {
+        color: #475569;
+        font-size: 0.92rem;
+        line-height: 1.6;
+        margin-bottom: 8px;
+    }
+    </style>
+    <div class="sbar-phone-box">
+        <div class="sbar-phone-header">☎️ Physician Call | SBAR Report Window</div>
+        <div class="sbar-phone-caption">
+            이 창은 환자에게 말하는 대화창이 아니라, 의사에게 전화 보고하는 SBAR 전용 입력창입니다.
+            Situation, Background, Assessment, Recommendation을 구분하여 작성한 뒤 보고를 제출하세요.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.form("sbar_phone_report_form", clear_on_submit=False):
+        s_text = st.text_area(
+            "S | Situation 현재 상황",
+            value="62세 남성 김심근 환자가 30분 전부터 흉통과 호흡곤란을 호소합니다.",
+            height=80,
+        )
+        b_text = st.text_area(
+            "B | Background 배경",
+            value="고혈압 과거력, 흡연력, 부친 심장마비 가족력이 있습니다.",
+            height=80,
+        )
+        a_text = st.text_area(
+            "A | Assessment 사정",
+            value="NRS 8점 흉통, 좌측 어깨와 턱 방사통, 식은땀, SpO₂ 93%, ECG상 II, III, aVF ST elevation, Troponin I 상승으로 AMI가 의심됩니다.",
+            height=100,
+        )
+        r_text = st.text_area(
+            "R | Recommendation 제안",
+            value="산소요법, 약물투여 및 추가 처방 확인을 요청드립니다.",
+            height=80,
+        )
+
+        col_submit, col_close = st.columns([1, 1])
+        with col_submit:
+            submitted = st.form_submit_button("📞 SBAR 보고 제출")
+        with col_close:
+            closed = st.form_submit_button("닫기")
+
+        if submitted:
+            sbar_report = (
+                "SBAR 보고\n"
+                f"S: {s_text}\n"
+                f"B: {b_text}\n"
+                f"A: {a_text}\n"
+                f"R: {r_text}"
+            )
+            st.session_state.messages.append({"role": "user", "content": f"☎️ [SBAR 보고]\n{sbar_report}"})
+            for answer in get_response(sbar_report):
+                st.session_state.messages.append(answer)
+            st.session_state.show_sbar_window = False
+            st.rerun()
+
+        if closed:
+            st.session_state.show_sbar_window = False
+            st.rerun()
+
 
 def render_message(msg: Dict[str, str]) -> None:
     """챗봇, 학습자, 시스템 정보를 색상과 라벨로 명확히 구분한다."""
