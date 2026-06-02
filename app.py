@@ -1327,7 +1327,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             st.session_state.cooperation_formed = True
             mark_checklist("10. 교류작용: 중재 설명 및 중재 수행")
             responses.append(order_message(
-                "처방 기반 중재 수행\n"
+                "처방 기반 중재 수행 완료\n"
                 f"- {DOCTOR_ORDER[0]}\n"
                 f"- {DOCTOR_ORDER[1]}\n"
                 f"- {DOCTOR_ORDER[2]}\n"
