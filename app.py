@@ -1432,13 +1432,6 @@ st.sidebar.write(f"{'✅' if st.session_state.cooperation_formed else '⬜'} 환
 st.sidebar.write(f"{'✅' if st.session_state.intervention_done else '⬜'} 처방 기반 중재 수행")
 st.sidebar.write(f"{'✅' if st.session_state.goal_achieved else '⬜'} 통증·호흡곤란·불안 완화 확인")
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("👤 환자 기본 정보")
-st.sidebar.write(f"이름: {PATIENT_INFO['name']}")
-st.sidebar.write(f"성별/나이: {PATIENT_INFO['sex']} / {PATIENT_INFO['age']}")
-st.sidebar.write(f"직업: {PATIENT_INFO['job']}")
-st.sidebar.write(f"입원 경로: {PATIENT_INFO['route']}")
-
 # ------------------------------------------------------------
 # 13. 시작 / 초기화 버튼
 # ------------------------------------------------------------
