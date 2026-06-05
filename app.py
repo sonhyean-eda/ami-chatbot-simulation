@@ -82,38 +82,153 @@ if show_program_description:
     st.markdown(PROGRAM_DESCRIPTION)
     st.info(PROGRESS_DESCRIPTION)
 else:
-    st.subheader("🚨 시뮬레이션 상황")
-
+    # 첫 화면은 병원 EMR 초진 화면처럼 보이도록 구성
     st.markdown("""
-    ### 👤 환자 기본정보
+    <style>
+    .emr-wrap {
+        background: #F8FAFC;
+        border: 1px solid #D9E2EC;
+        border-radius: 16px;
+        padding: 22px 24px;
+        margin-top: 12px;
+        margin-bottom: 18px;
+        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+        color: #111827;
+    }
+    .emr-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #CBD5E1;
+        padding-bottom: 12px;
+        margin-bottom: 16px;
+    }
+    .emr-title {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #0F172A;
+    }
+    .emr-badge {
+        background: #FEE2E2;
+        color: #991B1B;
+        border: 1px solid #FCA5A5;
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 0.9rem;
+        font-weight: 700;
+    }
+    .emr-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+    .emr-cell {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 12px 14px;
+    }
+    .emr-label {
+        font-size: 0.78rem;
+        color: #64748B;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+    .emr-value {
+        font-size: 1.02rem;
+        color: #111827;
+        font-weight: 800;
+    }
+    .emr-section {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 16px 18px;
+        margin-top: 12px;
+        line-height: 1.7;
+    }
+    .emr-section-title {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #1E293B;
+        margin-bottom: 8px;
+        border-left: 5px solid #2563EB;
+        padding-left: 10px;
+    }
+    .emr-quote {
+        background: #FFF7ED;
+        border-left: 6px solid #F97316;
+        border-radius: 10px;
+        padding: 12px 15px;
+        margin: 10px 0;
+        font-weight: 700;
+        color: #7C2D12;
+    }
+    .emr-role {
+        background: #EFF6FF;
+        border: 1px solid #BFDBFE;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-top: 12px;
+        color: #1E3A8A;
+        font-weight: 700;
+        line-height: 1.7;
+    }
+    @media (max-width: 900px) {
+        .emr-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+    </style>
 
-    | 항목 | 내용 |
-    |---|---|
-    | 이름 | 김심근 |
-    | 성별/나이 | 남성 / 62세 |
-    | 직업 | 택시기사 |
-    | 내원 경로 | 응급실 내원 |
-    """)
+    <div class="emr-wrap">
+        <div class="emr-header">
+            <div class="emr-title">🏥 Emergency Department EMR | Initial Nursing Screen</div>
+            <div class="emr-badge">AMI 의심 환자</div>
+        </div>
 
-    st.markdown("""
-    ---
+        <div class="emr-grid">
+            <div class="emr-cell">
+                <div class="emr-label">Patient Name</div>
+                <div class="emr-value">김심근</div>
+            </div>
+            <div class="emr-cell">
+                <div class="emr-label">Gender / Age</div>
+                <div class="emr-value">남성 / 62세</div>
+            </div>
+            <div class="emr-cell">
+                <div class="emr-label">Occupation</div>
+                <div class="emr-value">택시기사</div>
+            </div>
+            <div class="emr-cell">
+                <div class="emr-label">Visit Route</div>
+                <div class="emr-value">응급실 내원</div>
+            </div>
+        </div>
 
-    ### 🏥 현재 상황
+        <div class="emr-section">
+            <div class="emr-section-title">🚨 Chief Complaint</div>
+            운전 중 갑자기 발생한 흉통으로 응급실에 내원함.
+            <div class="emr-quote">
+                “가슴이 너무 조이고 답답해요.”<br>
+                “숨쉬기가 힘들어요.”<br>
+                “저 죽는 거 아니죠?”
+            </div>
+        </div>
 
-    **환자 김심근**은 62세 남성 택시기사로, 운전 중 갑자기 발생한 흉통으로 응급실에 내원하였다.
+        <div class="emr-section">
+            <div class="emr-section-title">🩺 Present Illness Summary</div>
+            환자는 가슴 중앙의 압박성 통증을 호소하고 있으며, 통증은 턱과 왼쪽 어깨로 방사된다.
+            현재 식은땀, 호흡곤란, 극심한 불안을 동반하고 있다.
+        </div>
 
-    환자는 매우 불안한 표정으로 다음과 같이 호소하고 있다.
-
-    > “가슴이 너무 조이고 답답해요.”  
-    > “숨쉬기가 힘들어요.”  
-    > “저 죽는 거 아니죠?”
-
-    현재 환자는 **가슴 중앙의 압박성 통증**, **턱과 왼쪽 어깨로 퍼지는 방사통**,
-    **식은땀**, **호흡곤란**, **극심한 불안**을 호소하고 있다.
-
-    당신은 **응급실 학생간호사**로서 환자의 상태를 사정하고, 필요한 검사와 처치를 설명하며,
-    의사에게 SBAR로 보고하고, 처방에 따른 간호중재와 중재 후 재사정을 수행해야 한다.
-    """)
+        <div class="emr-role">
+            👩‍⚕️ 당신은 응급실 학생간호사입니다. 환자의 상태를 사정하고, 필요한 검사와 처치를 설명하며,
+            의사에게 SBAR로 보고하고, 처방에 따른 간호중재와 중재 후 재사정을 수행하십시오.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 if not api_key:
     st.warning("OPENAI_API_KEY가 설정되지 않았습니다. 규칙기반 응답만 사용됩니다.")
@@ -249,6 +364,7 @@ def init_state() -> None:
         "ami_judged": False,
         "labs_shown": False,
         "sbar_reported": False,
+        "show_sbar_window": False,
         "order_shown": False,
         "intervention_done": False,
         "reassessment_done": False,
@@ -414,6 +530,8 @@ def doctor_message(text: str) -> Dict[str, str]:
 def feedback_message(text: str) -> Dict[str, str]:
     return {"role": "assistant", "content": f"[학습 안내] {text}"}
 
+
+
 def render_sbar_phone_window() -> None:
     """전화 아이콘을 눌렀을 때 열리는 SBAR 전용 보고창."""
     st.markdown("""
@@ -498,6 +616,7 @@ def render_sbar_phone_window() -> None:
         if closed:
             st.session_state.show_sbar_window = False
             st.rerun()
+
 
 
 def render_message(msg: Dict[str, str]) -> None:
@@ -1412,7 +1531,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             st.session_state.cooperation_formed = True
             mark_checklist("10. 교류작용: 중재 설명 및 중재 수행")
             responses.append(order_message(
-                "처방 기반 중재 수행 완료\n"
+                "처방 기반 중재 수행\n"
                 f"- {DOCTOR_ORDER[0]}\n"
                 f"- {DOCTOR_ORDER[1]}\n"
                 f"- {DOCTOR_ORDER[2]}\n"
@@ -1559,6 +1678,28 @@ if st.session_state.started:
             ))
 
 if st.session_state.started and not st.session_state.ended:
+    # SBAR 보고는 환자 대화창과 분리하여 전화 보고창에서 수행하도록 구성
+    sbar_ready = st.session_state.interaction_completed and not st.session_state.sbar_reported
+
+    if st.session_state.interaction_completed and not st.session_state.sbar_reported:
+        st.markdown("---")
+        st.markdown("### ☎️ SBAR 보고")
+        st.caption("환자에게 말하는 일반 대화창과 구분하기 위해, SBAR 보고는 전화 아이콘을 눌러 별도 보고창에서 작성합니다.")
+
+        col_call, col_hint = st.columns([1, 2])
+        with col_call:
+            if st.button("☎️ SBAR 보고창 열기", use_container_width=True):
+                st.session_state.show_sbar_window = True
+                st.rerun()
+        with col_hint:
+            st.info("상호작용 단계가 완료되었습니다. 의사에게 SBAR로 보고하면 처방이 제시됩니다.")
+
+    elif not st.session_state.interaction_completed and not st.session_state.sbar_reported:
+        st.caption("☎️ SBAR 보고창은 검사결과 확인 후 환자 문제, 간호목표, 목표달성 방법 공유가 완료되면 활성화됩니다.")
+
+    if st.session_state.get("show_sbar_window", False):
+        render_sbar_phone_window()
+
     user_input = st.chat_input("환자에게 질문하거나 간호수행 내용을 입력하세요.")
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
