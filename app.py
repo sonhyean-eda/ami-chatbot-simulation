@@ -484,22 +484,26 @@ def render_sbar_phone_window() -> None:
     with st.form("sbar_phone_report_form", clear_on_submit=False):
         s_text = st.text_area(
             "S | Situation 현재 상황",
-            value="62세 남성 김심근 환자가 30분 전부터 흉통과 호흡곤란을 호소합니다.",
+            value="",
+            placeholder="예: 62세 남성 김심근 환자가 30분 전부터 흉통과 호흡곤란을 호소합니다.",
             height=80,
         )
         b_text = st.text_area(
             "B | Background 배경",
-            value="고혈압 과거력, 흡연력, 부친 심장마비 가족력이 있습니다.",
+            value="",
+            placeholder="예: 고혈압 과거력, 흡연력, 부친 심장마비 가족력이 있습니다.",
             height=80,
         )
         a_text = st.text_area(
             "A | Assessment 사정",
-            value="NRS 8점 흉통, 좌측 어깨와 턱 방사통, 식은땀, SpO₂ 93%, ECG상 II, III, aVF ST elevation, Troponin I 상승으로 AMI가 의심됩니다.",
+            value="",
+            placeholder="예: NRS 8점 흉통, 좌측 어깨와 턱 방사통, 식은땀, SpO₂ 93%, ECG상 II, III, aVF ST elevation, Troponin I 상승으로 AMI가 의심됩니다.",
             height=100,
         )
         r_text = st.text_area(
             "R | Recommendation 제안",
-            value="산소요법, 약물투여 및 추가 처방 확인을 요청드립니다.",
+            value="",
+            placeholder="예: 산소요법, 약물투여 및 추가 처방 확인을 요청드립니다.",
             height=80,
         )
 
@@ -510,18 +514,21 @@ def render_sbar_phone_window() -> None:
             closed = st.form_submit_button("닫기")
 
         if submitted:
-            sbar_report = (
-                "SBAR 보고\n"
-                f"S: {s_text}\n"
-                f"B: {b_text}\n"
-                f"A: {a_text}\n"
-                f"R: {r_text}"
-            )
-            st.session_state.messages.append({"role": "user", "content": f"☎️ [SBAR 보고]\n{sbar_report}"})
-            for answer in get_response(sbar_report):
-                st.session_state.messages.append(answer)
-            st.session_state.show_sbar_window = False
-            st.rerun()
+            if not all([s_text.strip(), b_text.strip(), a_text.strip(), r_text.strip()]):
+                st.warning("S, B, A, R 항목을 모두 작성한 후 SBAR 보고를 제출하세요.")
+            else:
+                sbar_report = (
+                    "SBAR 보고\n"
+                    f"S: {s_text}\n"
+                    f"B: {b_text}\n"
+                    f"A: {a_text}\n"
+                    f"R: {r_text}"
+                )
+                st.session_state.messages.append({"role": "user", "content": f"☎️ [SBAR 보고]\n{sbar_report}"})
+                for answer in get_response(sbar_report):
+                    st.session_state.messages.append(answer)
+                st.session_state.show_sbar_window = False
+                st.rerun()
 
         if closed:
             st.session_state.show_sbar_window = False
@@ -1169,7 +1176,8 @@ def classify_input(user_text: str) -> str:
         "고혈압", "혈압약", "혈압 약", "고혈압 약",
         "당뇨", "고지혈증", "심장질환", "심질환",
         "진단받", "앓고", "질환 있으",
-        "복용약", "복용약물", "현재 복용 약물", "약 드시", "약 먹", "복용 중인", "복용중인",
+        "복용약", "복용약물", "현재 복용 약물", "약 드시", "약 먹", "복용중인",
+        "복용 중인",
         "담배", "흡연", "음주", "술", "알레르기",
         "식습관", "생활습관", "운동", "운동 부족", "위험요인"
     ]
