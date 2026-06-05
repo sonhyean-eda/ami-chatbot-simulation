@@ -622,11 +622,11 @@ def render_message(msg: Dict[str, str]) -> None:
     subtext_color = "#374151"
 
     html = f"""
-    <div style="background:{bg}; border-left:5px solid {border}; padding:5px 12px;
-                border-radius:9px; margin:4px 0; line-height:1.35; white-space:pre-wrap;
-                color:{text_color}; box-shadow:0 1px 3px rgba(0,0,0,0.08);
+    <div style="background:{bg}; border-left:5px solid {border}; padding:2px 12px;
+                border-radius:8px; margin:2px 0; line-height:1.18; white-space:pre-wrap;
+                color:{text_color}; box-shadow:0 1px 2px rgba(0,0,0,0.07);
                 font-size:1.5rem; width:100%;">
-        <div style="font-weight:800; margin-bottom:2px; color:{text_color}; font-size:1.5rem;">
+        <div style="font-weight:800; margin-bottom:0px; color:{text_color}; font-size:1.5rem;">
             {emoji} {escape(label)}
         </div>
         <div style="color:{subtext_color}; font-size:1.5rem;">{escape(body)}</div>
