@@ -39,32 +39,27 @@ st.title("🫀 급성심근경색(AMI) 챗봇 가상환자 시뮬레이션")
 
 st.markdown("""
 <style>
-/* 전체 채팅 영역을 너무 넓게 보이지 않도록 조정 */
+/* 안내 문구는 왼쪽 정렬로 유지하고 글자만 보기 좋게 조정 */
 .chat-compact-guide {
-    max-width: 780px;
-    margin: 0 auto 8px auto;
-    font-size: 0.9rem;
+    margin: 0 0 6px 0;
+    font-size: 1.0rem;
     color: #475569;
 }
 
-/* Streamlit 기본 채팅 입력창 폭 조정 */
+/* 채팅 입력창은 기본 폭을 유지 */
 div[data-testid="stChatInput"] {
-    max-width: 780px;
-    margin-left: auto;
-    margin-right: auto;
+    margin-left: 0;
+    margin-right: 0;
 }
 
-/* 안내문, caption 글자 크기 약간 축소 */
+/* caption은 너무 작지 않게 유지 */
 .stCaptionContainer, div[data-testid="stCaptionContainer"] {
-    font-size: 0.84rem;
+    font-size: 0.95rem;
 }
 
-/* 정보 박스가 화면 전체를 과도하게 차지하지 않도록 조정 */
+/* 정보 박스도 기본 폭 유지 */
 div[data-testid="stAlert"] {
-    max-width: 780px;
-    margin-left: auto;
-    margin-right: auto;
-    font-size: 0.88rem;
+    font-size: 0.95rem;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -627,14 +622,14 @@ def render_message(msg: Dict[str, str]) -> None:
     subtext_color = "#374151"
 
     html = f"""
-    <div style="background:{bg}; border-left:5px solid {border}; padding:8px 11px;
-                border-radius:9px; margin:5px auto; line-height:1.42; white-space:pre-wrap;
+    <div style="background:{bg}; border-left:5px solid {border}; padding:5px 12px;
+                border-radius:9px; margin:4px 0; line-height:1.35; white-space:pre-wrap;
                 color:{text_color}; box-shadow:0 1px 3px rgba(0,0,0,0.08);
-                font-size:0.88rem; max-width:780px;">
-        <div style="font-weight:800; margin-bottom:3px; color:{text_color}; font-size:0.86rem;">
+                font-size:1.02rem; width:100%;">
+        <div style="font-weight:800; margin-bottom:2px; color:{text_color}; font-size:1.0rem;">
             {emoji} {escape(label)}
         </div>
-        <div style="color:{subtext_color}; font-size:0.88rem;">{escape(body)}</div>
+        <div style="color:{subtext_color}; font-size:1.02rem;">{escape(body)}</div>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
