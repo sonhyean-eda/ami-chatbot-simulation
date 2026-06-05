@@ -37,6 +37,38 @@ client = OpenAI(api_key=api_key) if api_key else None
 # ------------------------------------------------------------
 st.title("🫀 급성심근경색(AMI) 챗봇 가상환자 시뮬레이션")
 
+st.markdown("""
+<style>
+/* 전체 채팅 영역을 너무 넓게 보이지 않도록 조정 */
+.chat-compact-guide {
+    max-width: 780px;
+    margin: 0 auto 8px auto;
+    font-size: 0.9rem;
+    color: #475569;
+}
+
+/* Streamlit 기본 채팅 입력창 폭 조정 */
+div[data-testid="stChatInput"] {
+    max-width: 780px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* 안내문, caption 글자 크기 약간 축소 */
+.stCaptionContainer, div[data-testid="stCaptionContainer"] {
+    font-size: 0.84rem;
+}
+
+/* 정보 박스가 화면 전체를 과도하게 차지하지 않도록 조정 */
+div[data-testid="stAlert"] {
+    max-width: 780px;
+    margin-left: auto;
+    margin-right: auto;
+    font-size: 0.88rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # 사이드바에서 클릭했을 때만 큰 화면에 프로그램 설명이 나타나도록 설정
 show_program_description = st.sidebar.toggle("📘 프로그램 설명 보기", value=False)
 
@@ -595,13 +627,14 @@ def render_message(msg: Dict[str, str]) -> None:
     subtext_color = "#374151"
 
     html = f"""
-    <div style="background:{bg}; border-left:7px solid {border}; padding:13px 15px;
-                border-radius:12px; margin:9px 0; line-height:1.6; white-space:pre-wrap;
-                color:{text_color}; box-shadow:0 1px 4px rgba(0,0,0,0.10);">
-        <div style="font-weight:800; margin-bottom:5px; color:{text_color};">
+    <div style="background:{bg}; border-left:5px solid {border}; padding:8px 11px;
+                border-radius:9px; margin:5px auto; line-height:1.42; white-space:pre-wrap;
+                color:{text_color}; box-shadow:0 1px 3px rgba(0,0,0,0.08);
+                font-size:0.88rem; max-width:780px;">
+        <div style="font-weight:800; margin-bottom:3px; color:{text_color}; font-size:0.86rem;">
             {emoji} {escape(label)}
         </div>
-        <div style="color:{subtext_color};">{escape(body)}</div>
+        <div style="color:{subtext_color}; font-size:0.88rem;">{escape(body)}</div>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
@@ -1567,7 +1600,7 @@ if st.session_state.started and not st.session_state.ended:
     if st.session_state.interaction_completed and not st.session_state.sbar_reported:
         st.markdown("---")
         st.markdown("### ☎️ SBAR 보고")
-        st.caption("환자에게 말하는 일반 대화창과 구분하기 위해, SBAR 보고는 전화 아이콘을 눌러 별도 보고창에서 작성합니다.")
+        st.caption("SBAR 보고는 환자 대화와 구분하여 전화 보고창에서 작성합니다.")
 
         col_call, col_hint = st.columns([1, 2])
         with col_call:
@@ -1578,7 +1611,7 @@ if st.session_state.started and not st.session_state.ended:
             st.info("상호작용 단계가 완료되었습니다. 의사에게 SBAR로 보고하면 처방이 제시됩니다.")
 
     elif not st.session_state.interaction_completed and not st.session_state.sbar_reported:
-        st.caption("☎️ SBAR 보고창은 검사결과 확인 후 환자 문제, 간호목표, 목표달성 방법 공유가 완료되면 활성화됩니다.")
+        st.caption("☎️ SBAR 보고창은 검사결과 확인 후 환자 문제·목표·방법 공유가 완료되면 활성화됩니다.")
 
     if st.session_state.get("show_sbar_window", False):
         render_sbar_phone_window()
