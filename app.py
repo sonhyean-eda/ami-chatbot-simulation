@@ -82,154 +82,37 @@ if show_program_description:
     st.markdown(PROGRAM_DESCRIPTION)
     st.info(PROGRESS_DESCRIPTION)
 else:
-    # 첫 화면은 병원 EMR 초진 화면처럼 보이도록 구성
+    # 첫 화면은 기존처럼 시뮬레이션 상황을 중심으로 제시
+    st.subheader("🚨 시뮬레이션 상황")
+
     st.markdown("""
-    <style>
-    .emr-wrap {
-        background: #F8FAFC;
-        border: 1px solid #D9E2EC;
-        border-radius: 16px;
-        padding: 22px 24px;
-        margin-top: 12px;
-        margin-bottom: 18px;
-        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
-        color: #111827;
-    }
-    .emr-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 2px solid #CBD5E1;
-        padding-bottom: 12px;
-        margin-bottom: 16px;
-    }
-    .emr-title {
-        font-size: 1.35rem;
-        font-weight: 800;
-        color: #0F172A;
-    }
-    .emr-badge {
-        background: #FEE2E2;
-        color: #991B1B;
-        border: 1px solid #FCA5A5;
-        border-radius: 999px;
-        padding: 6px 12px;
-        font-size: 0.9rem;
-        font-weight: 700;
-    }
-    .emr-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
-        margin-bottom: 16px;
-    }
-    .emr-cell {
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        padding: 12px 14px;
-    }
-    .emr-label {
-        font-size: 0.78rem;
-        color: #64748B;
-        font-weight: 700;
-        margin-bottom: 4px;
-    }
-    .emr-value {
-        font-size: 1.02rem;
-        color: #111827;
-        font-weight: 800;
-    }
-    .emr-section {
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        padding: 16px 18px;
-        margin-top: 12px;
-        line-height: 1.7;
-    }
-    .emr-section-title {
-        font-size: 1.05rem;
-        font-weight: 800;
-        color: #1E293B;
-        margin-bottom: 8px;
-        border-left: 5px solid #2563EB;
-        padding-left: 10px;
-    }
-    .emr-quote {
-        background: #FFF7ED;
-        border-left: 6px solid #F97316;
-        border-radius: 10px;
-        padding: 12px 15px;
-        margin: 10px 0;
-        font-weight: 700;
-        color: #7C2D12;
-    }
-    .emr-role {
-        background: #EFF6FF;
-        border: 1px solid #BFDBFE;
-        border-radius: 12px;
-        padding: 14px 16px;
-        margin-top: 12px;
-        color: #1E3A8A;
-        font-weight: 700;
-        line-height: 1.7;
-    }
-    @media (max-width: 900px) {
-        .emr-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-    }
-    </style>
+    ### 👤 환자 기본정보
 
-    <div class="emr-wrap">
-        <div class="emr-header">
-            <div class="emr-title">🏥 Emergency Department EMR | Initial Nursing Screen</div>
-            <div class="emr-badge">AMI 의심 환자</div>
-        </div>
+    | 항목 | 내용 |
+    |---|---|
+    | 이름 | 김심근 |
+    | 성별/나이 | 남성 / 62세 |
+    | 직업 | 택시기사 |
+    | 내원 경로 | 응급실 내원 |
 
-        <div class="emr-grid">
-            <div class="emr-cell">
-                <div class="emr-label">Patient Name</div>
-                <div class="emr-value">김심근</div>
-            </div>
-            <div class="emr-cell">
-                <div class="emr-label">Gender / Age</div>
-                <div class="emr-value">남성 / 62세</div>
-            </div>
-            <div class="emr-cell">
-                <div class="emr-label">Occupation</div>
-                <div class="emr-value">택시기사</div>
-            </div>
-            <div class="emr-cell">
-                <div class="emr-label">Visit Route</div>
-                <div class="emr-value">응급실 내원</div>
-            </div>
-        </div>
+    ---
 
-        <div class="emr-section">
-            <div class="emr-section-title">🚨 Chief Complaint</div>
-            운전 중 갑자기 발생한 흉통으로 응급실에 내원함.
-            <div class="emr-quote">
-                “가슴이 너무 조이고 답답해요.”<br>
-                “숨쉬기가 힘들어요.”<br>
-                “저 죽는 거 아니죠?”
-            </div>
-        </div>
+    ### 🏥 현재 상황
 
-        <div class="emr-section">
-            <div class="emr-section-title">🩺 Present Illness Summary</div>
-            환자는 가슴 중앙의 압박성 통증을 호소하고 있으며, 통증은 턱과 왼쪽 어깨로 방사된다.
-            현재 식은땀, 호흡곤란, 극심한 불안을 동반하고 있다.
-        </div>
+    환자 **김심근**은 62세 남성 택시기사로, 운전 중 갑자기 발생한 흉통으로 응급실에 내원하였다.
 
-        <div class="emr-role">
-            👩‍⚕️ 당신은 응급실 학생간호사입니다. 환자의 상태를 사정하고, 필요한 검사와 처치를 설명하며,
-            의사에게 SBAR로 보고하고, 처방에 따른 간호중재와 중재 후 재사정을 수행하십시오.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    환자는 매우 불안한 표정으로 다음과 같이 호소하고 있다.
 
+    > “가슴이 너무 조이고 답답해요.”  
+    > “숨쉬기가 힘들어요.”  
+    > “저 죽는 거 아니죠?”
+
+    현재 환자는 **가슴 중앙의 압박성 통증**, **턱과 왼쪽 어깨로 퍼지는 방사통**, 
+    **식은땀**, **호흡곤란**, **극심한 불안**을 호소하고 있다.
+
+    당신은 **응급실 학생간호사**로서 환자의 상태를 사정하고, 필요한 검사와 처치를 설명하며,
+    의사에게 SBAR로 보고하고, 처방에 따른 간호중재와 중재 후 재사정을 수행해야 한다.
+    """)
 if not api_key:
     st.warning("OPENAI_API_KEY가 설정되지 않았습니다. 규칙기반 응답만 사용됩니다.")
 
