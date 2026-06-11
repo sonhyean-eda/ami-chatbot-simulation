@@ -174,22 +174,31 @@ PATIENT_INFO: Dict[str, str] = {
 VITAL_SIGNS: Dict[str, str] = {
     "BP": "168/96 mmHg",
     "HR": "104회/분",
-    "RR": "24회/분",
+    "RR": "32회/분",
     "SpO2": "93%",
     "BT": "36.7℃",
 }
 
 LAB_RESULTS: Dict[str, str] = {
     "ECG": "II, III, aVF 유도에서 ST-segment elevation 확인",
-    "Troponin I": "8.4 ng/mL",
+    "Troponin I": "12.0 ng/mL",
     "CK-MB": "46 ng/mL",
 }
 
+LAB_NORMAL_RANGES: Dict[str, str] = {
+    "Troponin I": "< 0.04 ng/mL",
+    "CK-MB": "< 3.0–5.0 ng/mL",
+}
+
 DOCTOR_ORDER: List[str] = [
-    "O₂ 2 L/min via nasal cannula",
-    "NTG 0.6 mg SL",
-    "Aspirin 300 mg PO",
-    "12-lead ECG re-check",
+    "[처치] O₂ 2 L/min via nasal cannula 적용",
+    "[약물] NTG 0.6 mg SL 투여",
+    "[약물] Aspirin 300 mg PO 투여",
+    "[약물] Plavix 300 mg PO 투여",
+    "[약물 PRN] NS 100 mL + morphine 5 mg",
+    "[처치] ECG monitoring 유지",
+    "[처치] 12-lead ECG re-check",
+    "[처치] CAG preparation",
 ]
 
 POST_INTERVENTION_STATUS: Dict[str, str] = {
@@ -197,6 +206,14 @@ POST_INTERVENTION_STATUS: Dict[str, str] = {
     "breathing": "호흡곤란이 다소 완화됨",
     "anxiety": "불안이 감소함",
     "message": "휴… 아까보다는 좀 나아졌어요. 통증이 8점에서 한 3점 정도로 줄어든 것 같고, 숨쉬기도 조금 편해졌어요… 아직 걱정은 되지만 아까보다 덜 불안해요.",
+}
+
+POST_INTERVENTION_VITAL_SIGNS: Dict[str, str] = {
+    "BP": "138/84 mmHg",
+    "HR": "92회/분",
+    "RR": "22회/분",
+    "SpO2": "96%",
+    "BT": "36.7℃",
 }
 
 DEBRIEFING_QUESTIONS: List[str] = [
@@ -220,16 +237,16 @@ DEBRIEFING_EXAMPLES: Dict[str, List[str]] = {
     "SBAR 보고 예시": [
         "S: 62세 남성 김심근 환자가 30분 전부터 흉통과 호흡곤란을 호소합니다.",
         "B: 고혈압 과거력, 흡연력, 부친 심장마비 가족력이 있습니다.",
-        "A: NRS 8점 흉통, 좌측 어깨와 턱 방사통, 식은땀, SpO₂ 93%, ECG상 II, III, aVF ST elevation, Troponin I 상승으로 AMI가 의심됩니다.",
-        "R: 산소요법, 약물투여 및 추가 처방 확인을 요청드립니다.",
+        "A: NRS 8점 흉통, 좌측 어깨와 턱 방사통, 식은땀, SpO₂ 93%, ECG상 II, III, aVF ST elevation, Troponin I 12.0 ng/mL 상승으로 AMI가 의심됩니다.",
+        "R: 산소요법, NTG, Aspirin, Plavix 투여, 12-lead ECG 재확인 및 CAG preparation 처방 확인을 요청드립니다.",
     ],
     "중재 설명 예시": [
         "산소는 숨쉬기 어려운 증상을 완화하고 심장에 산소 공급을 돕기 위해 적용합니다.",
-        "니트로글리세린은 흉통 완화에 도움이 될 수 있고, 아스피린은 혈전 생성을 줄이는 데 사용됩니다.",
-        "약물 투여 후 어지러움이나 불편감이 있으면 바로 말씀해주세요. 설명드린 중재를 진행해도 괜찮으실까요?",
+        "니트로글리세린은 혀 밑에서 녹여 흉통 완화에 도움을 주며, 아스피린과 플라빅스는 혈전 생성을 줄이는 데 사용됩니다.",
+        "약물 투여 후 어지러움, 두통, 출혈, 통증 악화 등 불편감이 있으면 바로 말씀해주세요. 설명드린 중재를 진행해도 괜찮으실까요?",
     ],
     "재사정 예시": [
-        "중재 후 가슴 통증은 0점부터 10점 중 몇 점 정도인가요?",
+        "중재 후 가슴 통증은 0점부터 10점 중 몇 점 정도인가요? NTG 투여 후 혈압과 맥박 등 활력징후를 다시 확인하겠습니다.",
         "숨쉬기는 아까보다 편해지셨나요? 불안감은 조금 줄어들었나요?",
         "처음 함께 설정한 통증 완화, 호흡곤란 감소, 불안 감소 목표가 어느 정도 달성되었다고 생각하시나요?",
         "아직 가장 불편하거나 걱정되는 점이 있나요?",
@@ -397,7 +414,7 @@ def get_interaction_patient_response_for_current_state(updates: List[str]) -> st
         and st.session_state.means_explained
         and not st.session_state.agreement_obtained
     ):
-        return "가슴 통증과 숨찬 증상을 줄이기 위해 산소랑 약물치료가 필요하다는 건 이해했어요… 제가 협조하면 바로 진행할 수 있는 건가요?"
+        return "가슴 통증과 숨찬 증상을 줄이기 위해 산소랑 약물치료가 필요하고, 혈관 확인을 위해 관상동맥조영술 준비가 필요할 수 있다는 건 이해했어요… 제가 협조하면 바로 진행할 수 있는 건가요?"
     if updates:
         return "조금 이해됐어요… 제 문제, 치료 목표, 그리고 앞으로 받을 방법을 한 번만 더 연결해서 설명해 주세요."
     return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 지금 제 문제와 치료 목표를 쉽게 설명해 주세요…"
@@ -408,7 +425,7 @@ def get_intervention_patient_response_for_current_state(updates: List[str]) -> s
     if st.session_state.oxygen_explained and not st.session_state.medication_explained:
         return "산소가 숨쉬는 데 도움이 된다는 건 알겠어요… 그런데 약은 어떤 약이고 왜 필요한가요?"
     if st.session_state.medication_explained and not st.session_state.oxygen_explained:
-        return "약이 가슴 통증을 줄이는 데 도움이 된다는 건 알겠어요… 산소는 왜 필요한지도 쉽게 설명해 주세요."
+        return "약이 가슴 통증과 혈전 예방에 도움이 된다는 건 알겠어요… 산소는 왜 필요한지도 쉽게 설명해 주세요."
     if (
         st.session_state.oxygen_explained
         and st.session_state.medication_explained
@@ -499,7 +516,7 @@ def render_sbar_phone_window() -> None:
         a_text = st.text_area(
             "A | Assessment 사정",
             value="",
-            placeholder="예: NRS 8점 흉통, 좌측 어깨와 턱 방사통, 식은땀, SpO₂ 93%, ECG상 II, III, aVF ST elevation, Troponin I 상승으로 AMI가 의심됩니다.",
+            placeholder="예: NRS 8점 흉통, 좌측 어깨와 턱 방사통, 식은땀, SpO₂ 93%, ECG상 II, III, aVF ST elevation, Troponin I 12.0 ng/mL 상승으로 AMI가 의심됩니다.",
             height=100,
         )
         r_text = st.text_area(
@@ -665,11 +682,11 @@ def get_current_guidance() -> str:
     if not st.session_state.sbar_reported:
         return "SBAR 형식으로 환자 상태, 배경, 사정 결과, 제안을 포함하여 의사에게 보고해보세요."
     if not st.session_state.intervention_explained:
-        return "의사 처방을 바탕으로 산소요법과 약물의 목적을 설명하고, 환자의 이해와 참여 의사를 확인해보세요."
+        return "의사 처방을 바탕으로 산소요법, NTG, Aspirin, Plavix, ECG 재확인 및 CAG preparation의 필요성을 설명하고, 환자의 이해와 참여 의사를 확인해보세요."
     if not st.session_state.intervention_done:
-        return "이제 처방에 따라 산소요법, NTG, Aspirin, 12-lead ECG 재확인을 수행해보세요."
+        return "이제 처방에 따라 산소요법, NTG, Aspirin, Plavix, ECG monitoring 유지, 12-lead ECG 재확인 및 CAG preparation을 수행해보세요."
     if not st.session_state.reassessment_done:
-        return "중재 후 통증, 호흡곤란, 불안 변화를 재사정하고, 처음 함께 설정한 목표가 달성되었는지 확인해보세요."
+        return "중재 후 통증, 호흡곤란, 불안 변화와 활력징후를 재사정하고, 처음 함께 설정한 목표가 달성되었는지 확인해보세요."
     return "시뮬레이션 흐름은 완료되었습니다. 디브리핑에서 수행 과정을 성찰해보세요."
 
 
@@ -683,10 +700,10 @@ STEP_HELP: Dict[str, Tuple[str, str]] = {
     "7. 상호작용: 검사결과 기반 문제 구체화": ("검사결과를 확인하고 환자의 주요 문제를 구체화합니다.", "검사결과 확인 후 완료됩니다."),
     "8. 상호작용: 간호목표 공유 및 목표달성 방법 확인": ("환자 문제, 간호목표, 목표달성 방법을 환자에게 공유하고 이해와 참여를 확인합니다.", "문제 확인, 목표 공유, 방법 설명, 참여 확인이 모두 인식되면 완료됩니다."),
     "9. 교류작용: SBAR 보고 및 처방 확인": ("SBAR로 의사에게 보고하고 처방을 확인합니다.", "SBAR 보고 내용이 인식되면 시스템/의사 처방이 제시되고 완료됩니다."),
-    "10. 교류작용: 중재 설명 및 중재 수행": ("산소요법과 약물 중재를 설명하고 처방에 따라 수행합니다.", "중재 설명 후 처방 기반 중재 수행이 이루어지면 완료됩니다."),
+    "10. 교류작용: 중재 설명 및 중재 수행": ("산소요법, NTG, Aspirin, Plavix, ECG monitoring, 12-lead ECG 재확인 및 CAG preparation 등 처방 기반 중재를 설명하고 수행합니다.", "중재 설명 후 처방 기반 중재 수행이 이루어지면 완료됩니다."),
     "11. 목표달성: 중재 후 재사정 및 목표달성 확인": (
         "중재 후 변화된 환자 상태를 바탕으로 통증 완화, 호흡곤란 감소, 불안 감소 목표가 달성되었는지 확인합니다.",
-        "중재 후 통증, 호흡곤란, 불안 변화를 재사정하고, 처음 함께 설정한 목표의 달성 여부를 확인하면 완료됩니다."
+        "중재 후 통증, 호흡곤란, 불안 변화와 활력징후를 재사정하고, 처음 함께 설정한 목표의 달성 여부를 확인하면 완료됩니다."
     ),
     "12. 성찰: 디브리핑": ("사정, 판단, 설명, 보고, 중재, 재사정 과정을 성찰합니다.", "디브리핑을 열고 답변을 작성하면 완료됩니다."),
 }
@@ -842,7 +859,10 @@ def update_interaction_state(text: str) -> List[str]:
         "약물", "약", "약물 치료", "약물 투여", "약물 작용",
         "니트로", "니트로글리세린", "ntg",
         "아스피린", "aspirin", "아스피린 중재",
-        "심전도", "처치", "중재", "치료", "진행", "시행", "적용"
+        "플라빅스", "plavix", "클로피도그렐", "clopidogrel",
+        "심전도", "심전도 재확인", "ecg monitoring", "모니터링",
+        "관상동맥조영술", "관상동맥 조영술", "cag", "cag 준비", "cag preparation",
+        "처치", "중재", "치료", "진행", "시행", "적용"
     ]
     agreement_keywords = [
         "협조", "환자 협조", "협조 요청",
@@ -904,12 +924,12 @@ def update_intervention_explanation_state(text: str) -> List[str]:
 
     medication_name_keywords = [
         "약", "약물", "니트로", "니트로글리세린", "ntg",
-        "아스피린", "aspirin",
+        "아스피린", "aspirin", "플라빅스", "plavix", "클로피도그렐", "clopidogrel", "모르핀", "morphine",
         "medicine", "medication", "drug", "nitroglycerin"
     ]
     medication_explain_keywords = [
         "통증", "흉통", "가슴 통증", "통증 완화", "통증 감소",
-        "혈전", "혈전 예방", "혈전 생성", "혈관확장", "혈관 확장",
+        "혈전", "혈전 예방", "혈전 생성", "혈관확장", "혈관 확장", "항혈소판", "출혈",
         "줄이는", "줄이는 데", "도움", "예방",
         "chest pain", "pain", "relieve pain", "reduce pain",
         "blood clot", "clot", "prevent clot", "reduce clot", "vasodilation",
@@ -924,7 +944,7 @@ def update_intervention_explanation_state(text: str) -> List[str]:
     ]
 
     side_effect_keywords = [
-        "어지럽", "어지러움", "두통", "불편", "불편감", "이상", "부작용",
+        "어지럽", "어지러움", "두통", "출혈", "멍", "구토", "불편", "불편감", "이상", "부작용",
         "통증 악화", "호흡곤란", "숨이 더 차", "말씀", "알려",
         "바로 말", "바로 말씀", "불편하면", "불편하면 말씀",
         "dizzy", "dizziness", "headache", "uncomfortable", "discomfort",
@@ -1117,7 +1137,8 @@ def classify_input(user_text: str) -> str:
         "약", "약물", "약물 투여", "약물 작용",
         "필요한 이유", "니트로", "니트로글리세린", "ntg",
         "혈관확장", "혈관 확장", "혈류공급", "혈류 공급", "산소공급", "산소 공급",
-        "아스피린", "aspirin", "아스피린 중재", "혈전 예방",
+        "아스피린", "aspirin", "아스피린 중재", "플라빅스", "plavix", "클로피도그렐", "혈전 예방",
+        "심전도 재확인", "ecg monitoring", "관상동맥조영술", "관상동맥 조영술", "cag", "cag preparation",
         "통증", "통증 감소", "호흡", "숨쉬기", "불편", "어지럽", "부작용",
         "불편하면 말씀", "환자 협조", "이해되도록 설명",
         "진행해도", "진행해도 괜찮", "진행해도 될까요",
@@ -1129,8 +1150,9 @@ def classify_input(user_text: str) -> str:
         "산소 투여", "산소를 투여", "산소 적용", "산소 연결",
         "산소요법 시행", "산소 요법 시행",
         "비강캐뉼라", "비강 캐뉼라", "ntg 투여", "니트로 투여", "니트로글리세린 투여",
-        "아스피린 투여", "약물을 투여", "약물 투여", "12-lead", "12유도",
-        "심전도 재확인", "ecg re-check", "ekg re-check"
+        "아스피린 투여", "플라빅스 투여", "plavix", "모르핀", "morphine", "약물을 투여", "약물 투여", "12-lead", "12유도",
+        "심전도 재확인", "ecg re-check", "ekg re-check", "ecg monitoring", "모니터링",
+        "cag preparation", "cag 준비", "관상동맥조영술 준비", "관상동맥 조영술 준비"
     ]
 
     if (
@@ -1382,8 +1404,8 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             responses.append(lab_message(
                 "검사결과\n"
                 f"- ECG: {LAB_RESULTS['ECG']}\n"
-                f"- Troponin I: {LAB_RESULTS['Troponin I']}\n"
-                f"- CK-MB: {LAB_RESULTS['CK-MB']}"
+                f"- Troponin I: {LAB_RESULTS['Troponin I']} (정상수치 {LAB_NORMAL_RANGES['Troponin I']})\n"
+                f"- CK-MB: {LAB_RESULTS['CK-MB']} (정상수치 {LAB_NORMAL_RANGES['CK-MB']})"
             ))
             responses.append(patient_message("검사 결과가 안 좋은 건가요…? 아직 가슴이 답답하고 숨도 좀 차서 너무 걱정돼요."))
 
@@ -1398,7 +1420,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             if st.session_state.interaction_completed:
                 responses.append(patient_message(
                     "네… 제 문제는 가슴 통증과 숨찬 증상이고, 목표는 통증을 줄이고 숨쉬기 편해지는 거군요. "
-                    "산소와 약물치료가 필요하다는 것도 이해했어요… 말씀하신 방법에 협조할게요."
+                    "산소와 약물치료, 심전도 재확인과 관상동맥조영술 준비가 필요할 수 있다는 것도 이해했어요… 말씀하신 방법에 협조할게요."
                 ))
                 responses.append(system_message(
                     "상호작용 단계가 완료되었습니다. 다음 단계로 SBAR 보고를 진행하세요."
@@ -1426,8 +1448,8 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             mark_checklist("9. 교류작용: SBAR 보고 및 처방 확인")
 
             order_text = (
-                "의사 처방\\n"
-                + "\\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
+                "의사 처방\n"
+                + "\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
             )
             responses.append(order_message(order_text))
 
@@ -1453,20 +1475,17 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                 "선생님… 산소와 약을 바로 하기 전에 왜 필요한지, 불편하면 어떻게 해야 하는지 설명해 주세요. "
                 "설명 듣고 진행해도 되는지 말씀드릴게요…"
             ))
-            responses.append(system_message("중재 수행 전 산소 설명, 약물 설명, 중재 목적 설명, 환자의 이해와 참여 확인이 필요합니다."))
+            responses.append(system_message("중재 수행 전 산소요법과 약물의 목적, 이상반응/불편감 안내, 환자의 이해와 참여 확인이 필요합니다."))
         else:
             st.session_state.intervention_done = True
             st.session_state.cooperation_formed = True
             mark_checklist("10. 교류작용: 중재 설명 및 중재 수행")
             responses.append(order_message(
                 "처방 기반 중재 수행\n"
-                f"- {DOCTOR_ORDER[0]}\n"
-                f"- {DOCTOR_ORDER[1]}\n"
-                f"- {DOCTOR_ORDER[2]}\n"
-                f"- {DOCTOR_ORDER[3]}"
+                + "\n".join([f"- {order}" for order in DOCTOR_ORDER])
             ))
             responses.append(patient_message("네… 설명 들었으니까 진행해주세요. 아직 무섭긴 한데, 선생님 말씀 믿고 해볼게요…"))
-            responses.append(system_message("5분 후 환자 상태를 재사정하세요."))
+            responses.append(system_message("5분 후 환자의 통증, 호흡곤란, 불안 정도와 활력징후를 재사정하세요."))
 
     elif category == "reassessment":
         st.session_state.reassessment_done = True
@@ -1478,11 +1497,19 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             "처음에 함께 정한 통증 완화, 호흡곤란 감소, 불안 감소 목표가 어느 정도 달성된 것 같아요. "
             "아직 조금 걱정은 되지만, 다시 아프거나 숨이 차면 바로 말씀드릴게요."
         ))
+        responses.append(vital_message(
+            "중재 후 활력징후 재측정\n"
+            f"- BP: {POST_INTERVENTION_VITAL_SIGNS['BP']}\n"
+            f"- HR: {POST_INTERVENTION_VITAL_SIGNS['HR']}\n"
+            f"- RR: {POST_INTERVENTION_VITAL_SIGNS['RR']}\n"
+            f"- SpO₂: {POST_INTERVENTION_VITAL_SIGNS['SpO2']}\n"
+            f"- BT: {POST_INTERVENTION_VITAL_SIGNS['BT']}"
+        ))
 
         st.session_state.ended = True
         st.session_state.scroll_to_debriefing = True
         responses.append(completion_message(
-            "중재 후 통증, 호흡곤란, 불안 변화에 대한 재사정과 목표달성 확인이 완료되었습니다. "
+            "중재 후 통증, 호흡곤란, 불안 변화와 활력징후 재측정, 목표달성 확인이 완료되었습니다. "
             "시뮬레이션이 종료되었습니다. 아래 디브리핑 단계로 이동하여 "
             "환자 사정, 판단, 검사 및 중재 설명, SBAR 보고, 중재 수행, 재사정과 목표달성 확인 과정을 성찰해 주세요."
         ))
@@ -1599,8 +1626,8 @@ if st.session_state.started:
         )
         if not has_order_card:
             render_message(order_message(
-                "의사 처방\\n"
-                + "\\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
+                "의사 처방\n"
+                + "\n".join([f"{idx}. {order}" for idx, order in enumerate(DOCTOR_ORDER, start=1)])
             ))
 
 if st.session_state.started and not st.session_state.ended:
