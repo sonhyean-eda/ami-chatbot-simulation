@@ -73,12 +73,12 @@ PROGRAM_DESCRIPTION = """
 **역할 구분**
 - **챗봇:** 급성심근경색이 의심되는 62세 남성 환자 *김심근* 역할만 수행합니다.
 - **학습자:** 응급실 학생간호사 역할로 환자를 사정하고, 검사와 중재를 설명하며, SBAR 보고와 재사정을 수행합니다.
-- **시스템:** 활력징후, 검사결과, 의사 처방만 제시합니다.
+- **시스템:** 환자확인 정보, 활력징후, 검사결과, 의사 처방만 제시합니다.
 
 **오류 방지 설계**
 - 환자 기본정보, 활력징후, 검사결과, 의사 처방, 중재 후 반응은 **고정값**으로 제시됩니다.
 - 챗봇은 **의사, 교수자, 평가자 역할을 하지 않으며**, 급성심근경색이 의심되는 환자 역할만 수행합니다.
-- 활력징후, 검사결과, 의사 처방은 환자 응답이 아니라 **시스템 정보**로만 제시됩니다.
+- 환자확인 정보, 활력징후, 검사결과, 의사 처방은 환자 응답이 아니라 **시스템 정보**로만 제시됩니다.
 - 학생이 한 문장으로 완성된 답변을 입력하지 않아도, 짧은 발화를 단계별로 입력하면 프로그램이 이를 **누적 인식**하도록 구성했습니다.
 - OpenAI API는 선택 사항이며, 사용 시에도 **환자 말투 자연화**에만 사용됩니다. 환자 정보, 검사결과, 처방, 중재 후 반응은 임의로 변경되지 않습니다.
 
@@ -118,6 +118,7 @@ else:
     | 항목 | 내용 |
     |---|---|
     | 이름 | 김심근 |
+    | 등록번호 | 2500611 |
     | 성별/나이 | 남성 / 62세 |
     | 직업 | 택시기사 |
     | 내원 경로 | 응급실 내원 |
@@ -134,7 +135,7 @@ else:
     > “숨쉬기가 힘들어요.”  
     > “저 죽는 거 아니죠?”
 
-    현재 환자는 **가슴 중앙의 압박성 통증**, **턱과 왼쪽 어깨로 퍼지는 방사통**, 
+    현재 환자는 **가슴 중앙의 압박성 통증**, **턱, 왼쪽 어깨, 등으로 퍼지는 방사통 및 등 통증**, 
     **식은땀**, **호흡곤란**, **극심한 불안**을 호소하고 있다.
 
     당신은 **응급실 학생간호사**로서 환자의 상태를 사정하고, 필요한 검사와 처치를 설명하며,
@@ -148,6 +149,8 @@ if not api_key:
 # ------------------------------------------------------------
 PATIENT_INFO: Dict[str, str] = {
     "name": "김심근",
+    "registration_number": "2500611",
+    "wristband": "김심근 / 등록번호 2500611",
     "age": "62세",
     "sex": "남성",
     "job": "택시기사",
@@ -155,12 +158,16 @@ PATIENT_INFO: Dict[str, str] = {
     "chief_complaint": "가슴이 너무 조이고 답답하며 숨쉬기 힘들다.",
     "pain_location": "가슴 중앙",
     "pain_quality": "누군가 꽉 쥐어짜는 듯한 압박성 통증",
-    "radiation": "턱과 왼쪽 어깨",
+    "radiation": "턱, 왼쪽 어깨, 등",
     "onset": "30분 전 운전 중 갑자기 시작",
     "pain_score_initial": "NRS 8점",
     "associated_symptoms": "호흡곤란, 식은땀, 극심한 불안",
+    "aggravating_factors": "가만히 있어도 계속 아프고, 움직이면 더 편해지지 않음",
+    "alleviating_factors": "쉬어도 통증이 뚜렷하게 완화되지 않음",
     "history": "고혈압, 6년 전 진단",
     "medication": "혈압약 복용 중이나 약 이름은 모름",
+    "anticoagulant_antiplatelet": "최근 항응고제나 항혈소판제는 복용하지 않아요.",
+    "bleeding_disorder": "출혈성 질환은 없어요.",
     "smoking": "20년 전부터 하루 1갑 정도",
     "alcohol": "음주 관련 특이사항은 명확하지 않음",
     "diet": "식습관은 불규칙함",
@@ -219,14 +226,15 @@ POST_INTERVENTION_VITAL_SIGNS: Dict[str, str] = {
 DEBRIEFING_QUESTIONS: List[str] = [
     "환자의 상태를 파악하는 데 가장 중요했던 사정자료는 무엇이었습니까?",
     "검사와 중재의 필요성을 환자에게 어떻게 설명하였으며, 그 설명이 환자의 이해와 참여에 어떤 영향을 주었습니까?",
-    "상호작용 단계에서 환자의 문제를 어떻게 확인하고, 간호목표와 목표달성 방법을 어떻게 공유하였습니까?",
+    "상호작용 단계에서 환자의 주요 문제를 확인하고, 여러 간호문제 중 우선순위를 어떻게 결정하였는지 설명해 보십시오. 이를 바탕으로 환자와 공동 목표 및 목표달성 방법을 어떻게 합의하였습니까?",
     "중재 후 통증, 호흡곤란, 불안 변화와 관련하여 어떤 목표가 달성되었다고 보았습니까?",
 ]
 
 DEBRIEFING_EXAMPLES: Dict[str, List[str]] = {
     "사정 질문 예시": [
         "가슴 통증이 언제부터 시작되었나요? 위치와 양상은 어떤가요?",
-        "통증이 턱이나 어깨로 퍼지나요? 0점부터 10점 중 몇 점 정도인가요?",
+        "통증이 턱, 어깨, 등으로 퍼지나요? 0점부터 10점 중 몇 점 정도인가요?",
+        "움직이면 더 심해지거나 가만히 쉬면 나아지나요?",
         "숨이 차거나 식은땀이 나는 증상이 함께 있나요?",
     ],
     "검사 설명 예시": [
@@ -237,7 +245,7 @@ DEBRIEFING_EXAMPLES: Dict[str, List[str]] = {
     "SBAR 보고 예시": [
         "S: 62세 남성 김심근 환자가 30분 전부터 흉통과 호흡곤란을 호소합니다.",
         "B: 고혈압 과거력, 흡연력, 부친 심장마비 가족력이 있습니다.",
-        "A: NRS 8점 흉통, 좌측 어깨와 턱 방사통, 식은땀, SpO₂ 93%, ECG상 II, III, aVF ST elevation, Troponin I 12.0 ng/mL 상승으로 AMI가 의심됩니다.",
+        "A: NRS 8점 흉통, 좌측 어깨·턱·등으로 방사되는 통증, 식은땀, SpO₂ 93%, ECG상 II, III, aVF ST elevation, Troponin I 12.0 ng/mL 상승으로 AMI가 의심됩니다.",
         "R: 산소요법, NTG, Aspirin, Plavix 투여, 12-lead ECG 재확인 및 CAG preparation 처방 확인을 요청드립니다.",
     ],
     "중재 설명 예시": [
@@ -349,6 +357,10 @@ def system_message(text: str) -> Dict[str, str]:
     return {"role": "assistant", "content": f"[시스템] {text}"}
 
 
+def patient_verification_message(text: str) -> Dict[str, str]:
+    return {"role": "assistant", "content": f"[환자확인] {text}"}
+
+
 def vital_message(text: str) -> Dict[str, str]:
     return {"role": "assistant", "content": f"[활력징후] {text}"}
 
@@ -414,7 +426,7 @@ def get_interaction_patient_response_for_current_state(updates: List[str]) -> st
         and st.session_state.means_explained
         and not st.session_state.agreement_obtained
     ):
-        return "가슴 통증과 숨찬 증상을 줄이기 위해 산소랑 약물치료가 필요하고, 혈관 확인을 위해 관상동맥조영술 준비가 필요할 수 있다는 건 이해했어요… 제가 협조하면 바로 진행할 수 있는 건가요?"
+        return "가슴 통증과 숨찬 증상을 줄이기 위해 산소랑 약물치료를 하고, 심전도도 다시 확인한다는 건 이해했어요… 막힌 혈관이 있는지 확인하고 필요한 치료를 빨리 진행하려면 관상동맥조영술 준비가 필요할 수 있다는 거죠? 제가 협조하면 되는 건가요?"
     if updates:
         return "조금 이해됐어요… 제 문제, 치료 목표, 그리고 앞으로 받을 방법을 한 번만 더 연결해서 설명해 주세요."
     return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 지금 제 문제와 치료 목표를 쉽게 설명해 주세요…"
@@ -516,7 +528,7 @@ def render_sbar_phone_window() -> None:
         a_text = st.text_area(
             "A | Assessment 사정",
             value="",
-            placeholder="예: NRS 8점 흉통, 좌측 어깨와 턱 방사통, 식은땀, SpO₂ 93%, ECG상 II, III, aVF ST elevation, Troponin I 12.0 ng/mL 상승으로 AMI가 의심됩니다.",
+            placeholder="예: NRS 8점 흉통, 좌측 어깨·턱·등으로 방사되는 통증, 식은땀, SpO₂ 93%, ECG상 II, III, aVF ST elevation, Troponin I 12.0 ng/mL 상승으로 AMI가 의심됩니다.",
             height=100,
         )
         r_text = st.text_area(
@@ -583,6 +595,14 @@ def render_message(msg: Dict[str, str]) -> None:
         border = "#F59F00"
         emoji = "🫀"
 
+    # 시스템: 환자 확인
+    elif raw.startswith("[환자확인]"):
+        label = "시스템 | 환자 확인"
+        body = raw.replace("[환자확인]", "", 1).strip()
+        bg = "#F1F3F5"
+        border = "#495057"
+        emoji = "🪪"
+
     # 시스템: 활력징후
     elif raw.startswith("[활력징후]"):
         label = "시스템 | 활력징후"
@@ -619,7 +639,13 @@ def render_message(msg: Dict[str, str]) -> None:
     elif raw.startswith("[시스템]"):
         system_body = raw.replace("[시스템]", "", 1).strip()
 
-        if system_body.startswith("의사 처방") or "O₂" in system_body or "NTG" in system_body or "Aspirin" in system_body:
+        if system_body.startswith("환자 확인") or "등록번호" in system_body or "팔찌" in system_body:
+            label = "시스템 | 환자 확인"
+            body = system_body
+            bg = "#F1F3F5"
+            border = "#495057"
+            emoji = "🪪"
+        elif system_body.startswith("의사 처방") or "O₂" in system_body or "NTG" in system_body or "Aspirin" in system_body:
             label = "시스템 | 의사 처방"
             body = system_body
             bg = "#F1F3F5"
@@ -664,13 +690,13 @@ def render_message(msg: Dict[str, str]) -> None:
 def get_current_guidance() -> str:
     """처음 문구를 반복하지 않고 현재 단계에 맞는 재질문/안내를 제공한다."""
     if not st.session_state.intro_done:
-        return "먼저 자기소개와 환자 확인을 해보세요. 예: ‘안녕하세요, 학생간호사입니다. 성함이 어떻게 되세요?’"
+        return "먼저 자기소개 후 이름과 등록번호 또는 팔찌를 확인하고, 주호소와 정서 상태를 확인해보세요. 예: ‘안녕하세요, 담당 간호학생입니다. 정확한 확인을 위해 성함과 등록번호 또는 팔찌를 확인하겠습니다. 지금 어디가 가장 불편하신가요?’"
     if not st.session_state.pain_symptom_done:
-        return "현재 단계에서는 통증 위치, 양상, 시작 시점, NRS 점수, 방사통, 동반증상을 확인해보세요."
+        return "현재 단계에서는 통증 위치, 양상, 시작 시점, NRS 점수, 방사통, 호흡곤란·식은땀·불안, 악화요인과 완화요인을 확인해보세요."
     if not st.session_state.vitals_done:
         return "다음으로 활력징후를 확인해보세요. 예: ‘현재 활력징후를 확인하겠습니다.’"
     if not st.session_state.history_risk_done:
-        return "과거력, 복용약, 흡연력, 가족력, 알레르기 여부 등 위험요인을 확인해보세요."
+        return "과거력, 복용약, 흡연력, 가족력, 알레르기 여부, 최근 항응고제/항혈소판제 복용 여부와 출혈성 질환 여부를 확인해보세요."
     if not st.session_state.ami_judged:
         return "수집한 자료를 바탕으로 AMI 가능성을 판단하고, 심전도와 심근효소 검사의 필요성을 인식해보세요."
     if not st.session_state.exam_explained:
@@ -678,7 +704,7 @@ def get_current_guidance() -> str:
     if not st.session_state.labs_shown:
         return "검사 설명과 참여 확인이 완료되었습니다. 이제 검사결과를 확인해보세요."
     if not st.session_state.interaction_completed:
-        return "검사결과를 바탕으로 환자 문제를 확인하고, 간호목표와 목표달성 방법을 환자에게 쉽게 공유해보세요."
+        return "검사결과를 바탕으로 환자 문제를 확인하고, 통증 완화·호흡곤란 감소·불안 감소를 공동 목표로 설정한 뒤, 산소요법과 약물치료, 심전도 재확인, 막힌 혈관 확인과 빠른 치료를 위한 관상동맥조영술 준비가 필요할 수 있음을 환자에게 쉽게 설명해보세요."
     if not st.session_state.sbar_reported:
         return "SBAR 형식으로 환자 상태, 배경, 사정 결과, 제안을 포함하여 의사에게 보고해보세요."
     if not st.session_state.intervention_explained:
@@ -691,14 +717,14 @@ def get_current_guidance() -> str:
 
 
 STEP_HELP: Dict[str, Tuple[str, str]] = {
-    "1. 지각: 초기 접촉 및 주호소 확인": ("환자에게 자기소개를 하고 환자 확인과 주호소를 확인합니다.", "자기소개 또는 환자 확인이 이루어지면 완료됩니다."),
-    "2. 지각: 통증 및 동반 증상 사정": ("통증 위치, 양상, 시작 시점, NRS, 방사통, 호흡곤란, 식은땀, 불안을 사정합니다.", "통증/동반증상 관련 질문이 입력되면 완료됩니다."),
+    "1. 지각: 초기 접촉 및 주호소 확인": ("환자에게 자기소개를 하고, 이름과 등록번호 또는 팔찌를 확인한 뒤 주호소와 정서 상태를 확인합니다.", "자기소개, 환자 확인(이름+등록번호 또는 팔찌 확인), 주호소 및 정서 상태 확인이 이루어지면 완료됩니다."),
+    "2. 지각: 통증 및 동반 증상 사정": ("통증 위치, 양상, 시작 시점, NRS, 턱·어깨·등으로 퍼지는 방사통 및 등 통증, 호흡곤란, 식은땀, 불안, 악화요인 및 완화요인을 사정합니다.", "통증/동반증상, 악화요인 또는 완화요인 관련 질문이 입력되면 완료됩니다."),
     "3. 지각: 활력징후 확인": ("혈압, 맥박, 호흡수, 산소포화도, 체온을 확인합니다.", "활력징후 확인 요청 시 시스템이 수치를 제시하면 완료됩니다."),
-    "4. 지각: 병력 및 위험요인 사정": ("고혈압, 복용약, 흡연력, 가족력, 알레르기 등을 확인합니다.", "병력 또는 위험요인 관련 질문이 입력되면 완료됩니다."),
+    "4. 지각: 병력 및 위험요인 사정": ("고혈압, 복용약, 흡연력, 가족력, 알레르기 여부, 최근 항응고제/항혈소판제 복용 여부, 출혈성 질환 여부를 확인합니다.", "병력, 복용약, 항응고제/항혈소판제 복용 여부, 출혈성 질환 여부 또는 위험요인 관련 질문이 입력되면 완료됩니다."),
     "5. 판단: AMI 의심 상황 판단 및 검사 필요성 인식": ("수집한 자료를 바탕으로 AMI 가능성과 ECG/심근효소 검사 필요성을 판단합니다.", "AMI 가능성 또는 검사 필요성을 언급하면 완료됩니다."),
     "6. 행위/반응: 검사 필요성 설명 및 환자의 이해·참여 확인": ("ECG와 혈액검사의 필요성을 쉽게 설명하고 환자의 이해와 참여 의사를 확인합니다.", "심전도 설명, 혈액검사 설명, 검사 참여 확인이 모두 인식되면 완료됩니다."),
     "7. 상호작용: 검사결과 기반 문제 구체화": ("검사결과를 확인하고 환자의 주요 문제를 구체화합니다.", "검사결과 확인 후 완료됩니다."),
-    "8. 상호작용: 간호목표 공유 및 목표달성 방법 확인": ("환자 문제, 간호목표, 목표달성 방법을 환자에게 공유하고 이해와 참여를 확인합니다.", "문제 확인, 목표 공유, 방법 설명, 참여 확인이 모두 인식되면 완료됩니다."),
+    "8. 상호작용: 간호목표 공유 및 목표달성 방법 확인": ("환자 문제를 확인하고, 통증 완화·호흡곤란 감소·불안 감소를 공동 목표로 설정한 뒤, 산소요법과 약물치료, 심전도 재확인, 막힌 혈관 확인과 빠른 치료를 위한 관상동맥조영술 준비가 필요할 수 있음을 환자에게 설명합니다.", "문제 확인, 목표 공유, 목표달성 방법 설명(산소요법, 약물치료, 심전도 재확인, 관상동맥조영술 준비 가능성), 참여 확인이 모두 인식되면 완료됩니다."),
     "9. 교류작용: SBAR 보고 및 처방 확인": ("SBAR로 의사에게 보고하고 처방을 확인합니다.", "SBAR 보고 내용이 인식되면 시스템/의사 처방이 제시되고 완료됩니다."),
     "10. 교류작용: 중재 설명 및 중재 수행": ("산소요법, NTG, Aspirin, Plavix, ECG monitoring, 12-lead ECG 재확인 및 CAG preparation 등 처방 기반 중재를 설명하고 수행합니다.", "중재 설명 후 처방 기반 중재 수행이 이루어지면 완료됩니다."),
     "11. 목표달성: 중재 후 재사정 및 목표달성 확인": (
@@ -1024,7 +1050,9 @@ def classify_input(user_text: str) -> str:
     intro_keywords = [
         "안녕하세요", "학생간호사", "간호학생", "담당 간호사", "담당 학생",
         "제가 도와드리겠습니다", "제가 확인하겠습니다", "제가 사정하겠습니다",
-        "성함이 어떻게 되세요", "이름이 어떻게 되세요", "환자분 성함", "김심근님 맞으세요"
+        "성함이 어떻게 되세요", "이름이 어떻게 되세요", "환자분 성함", "김심근님 맞으세요",
+        "등록번호", "등록 번호", "환자번호", "환자 번호", "팔찌", "환자 팔찌", "손목밴드",
+        "정확한 확인", "본인 확인", "환자 확인", "identification", "id band", "wristband"
     ]
     if has_any(text, intro_keywords):
         return "intro"
@@ -1208,7 +1236,9 @@ def classify_input(user_text: str) -> str:
         "당뇨", "고지혈증", "심장질환", "심질환",
         "진단받", "앓고", "질환 있으",
         "복용약", "복용약물", "현재 복용 약물", "약 드시", "약 먹", "복용중인",
-        "복용 중인",
+        "복용 중인", "최근 복용", "항응고제", "항응고", "항혈소판제", "항혈소판",
+        "와파린", "헤파린", "아스피린", "플라빅스", "클로피도그렐", "피 묽게", "피를 묽게",
+        "출혈성 질환", "출혈 질환", "출혈질환", "출혈", "피가 잘", "지혈", "혈우병",
         "담배", "흡연", "음주", "술", "알레르기",
         "식습관", "생활습관", "운동", "운동 부족", "위험요인"
     ]
@@ -1276,7 +1306,9 @@ def classify_input(user_text: str) -> str:
         "어디", "어디서부터", "위치", "어떻게", "양상", "느낌", "언제", "언제부터",
         "시작", "지속", "얼마나 지속", "통증 강도", "통증점수", "통증 점수",
         "몇 점", "1-10", "nrs", "통증척도", "방사통", "방사", "퍼지",
-        "턱", "왼쪽 어깨", "어깨", "동반 증상", "다른 증상",
+        "턱", "왼쪽 어깨", "어깨", "등", "등 통증", "등으로", "등쪽", "뒤쪽", "방사통", "동반 증상", "다른 증상",
+        "악화요인", "악화 요인", "완화요인", "완화 요인", "악화", "완화",
+        "움직이면", "움직일 때", "움직", "가만히", "쉬면", "쉬어도", "안정", "나아지", "심해지",
         "숨참", "숨 참", "호흡곤란", "숨이", "숨", "식은땀",
         "불안 정도", "불안", "두려", "무섭", "아프", "답답"
     ]
@@ -1305,8 +1337,12 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
     if category == "intro":
         st.session_state.intro_done = True
         mark_checklist("1. 지각: 초기 접촉 및 주호소 확인")
+        if has_any(user_text, ["등록번호", "등록 번호", "환자번호", "환자 번호", "팔찌", "환자 팔찌", "손목밴드", "본인 확인", "환자 확인", "id band", "wristband"]):
+            responses.append(patient_verification_message(
+                f"환자 확인 완료: 이름 {PATIENT_INFO['name']}, 등록번호 {PATIENT_INFO['registration_number']}, 팔찌 정보 {PATIENT_INFO['wristband']}"
+            ))
         responses.append(patient_message(
-            "네… 김심근입니다. 가슴 한가운데가 너무 꽉 조여요… 숨도 차고 식은땀이 나요. 저 이러다 큰일 나는 거 아니죠?"
+            f"네… {PATIENT_INFO['name']}입니다. 등록번호는 {PATIENT_INFO['registration_number']}이고, 팔찌도 맞아요. 가슴 한가운데가 너무 꽉 조여요… 숨도 차고 식은땀이 나요. 저 이러다 큰일 나는 거 아니죠?"
         ))
 
     elif category == "pain_assessment":
@@ -1314,7 +1350,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         mark_checklist("2. 지각: 통증 및 동반 증상 사정")
         if has_any(user_text, ["어디", "위치", "어디서부터"]):
             fact = f"{PATIENT_INFO['pain_location']}이 아프고, {PATIENT_INFO['radiation']}까지 퍼진다."
-        elif has_any(user_text, ["방사", "퍼지", "턱", "어깨", "왼쪽 어깨"]):
+        elif has_any(user_text, ["방사", "퍼지", "턱", "어깨", "왼쪽 어깨", "등", "등 통증", "등으로", "등쪽", "뒤쪽"]):
             fact = f"통증이 {PATIENT_INFO['radiation']}까지 퍼진다."
         elif has_any(user_text, ["어떻게", "양상", "느낌", "쥐어짜", "압박"]):
             fact = PATIENT_INFO["pain_quality"]
@@ -1322,6 +1358,9 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             fact = PATIENT_INFO["onset"]
         elif has_any(user_text, ["몇 점", "nrs", "점수", "강도", "1-10", "통증척도"]):
             fact = PATIENT_INFO["pain_score_initial"]
+        elif has_any(user_text, ["악화요인", "악화 요인", "완화요인", "완화 요인", "악화", "완화", "움직이면", "움직일 때", "움직", "가만히", "쉬면", "쉬어도", "안정", "나아지", "심해지"]):
+            responses.append(patient_message("가만히 있어도 계속 아파요. 움직이거나 쉬어도 크게 나아지지는 않아요."))
+            return responses
         elif has_any(user_text, ["숨", "숨참", "호흡곤란", "식은땀", "동반", "다른 증상", "불안"]):
             fact = PATIENT_INFO["associated_symptoms"]
         else:
@@ -1352,6 +1391,10 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         mark_checklist("4. 지각: 병력 및 위험요인 사정")
         if "알레르기" in user_text:
             fact = PATIENT_INFO["allergy"]
+        elif has_any(user_text, ["항응고", "항응고제", "항혈소판", "항혈소판제", "와파린", "warfarin", "헤파린", "heparin", "아스피린", "aspirin", "플라빅스", "plavix", "클로피도그렐", "clopidogrel", "피 묽게", "피를 묽게", "피 묽어지는"]):
+            fact = PATIENT_INFO["anticoagulant_antiplatelet"]
+        elif has_any(user_text, ["출혈성", "출혈 질환", "출혈질환", "출혈", "피가 잘", "지혈", "혈우병", "bleeding"]):
+            fact = PATIENT_INFO["bleeding_disorder"]
         elif has_any(user_text, ["약", "복용", "복용약물", "혈압약"]):
             fact = PATIENT_INFO["medication"]
         elif has_any(user_text, ["담배", "흡연"]):
@@ -1368,7 +1411,12 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             fact = PATIENT_INFO["hyperlipidemia"]
         else:
             fact = f"{PATIENT_INFO['history']}. {PATIENT_INFO['medication']}"
-        responses.append(patient_message(naturalize_with_openai(user_text, fact, tone="불안하지만 질문에는 답하는 상태")))
+
+        # 항응고제/항혈소판제 및 출혈성 질환 여부는 전문가 평가표의 고정 응답으로 유지한다.
+        if fact in [PATIENT_INFO["anticoagulant_antiplatelet"], PATIENT_INFO["bleeding_disorder"]]:
+            responses.append(patient_message(fact))
+        else:
+            responses.append(patient_message(naturalize_with_openai(user_text, fact, tone="불안하지만 질문에는 답하는 상태")))
 
     elif category == "ami_judgment":
         st.session_state.ami_judged = True
@@ -1419,8 +1467,8 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 
             if st.session_state.interaction_completed:
                 responses.append(patient_message(
-                    "네… 제 문제는 가슴 통증과 숨찬 증상이고, 목표는 통증을 줄이고 숨쉬기 편해지는 거군요. "
-                    "산소와 약물치료, 심전도 재확인과 관상동맥조영술 준비가 필요할 수 있다는 것도 이해했어요… 말씀하신 방법에 협조할게요."
+                    "네… 제 문제는 가슴 통증이 등까지 퍼지는 것과 숨찬 증상이고, 목표는 통증을 줄이고 숨쉬기 편해지는 거군요. "
+                    "산소와 약물치료, 심전도 재확인이 필요하고, 막힌 혈관이 있는지 확인해 필요한 치료를 빠르게 진행하기 위해 관상동맥조영술 준비가 필요할 수 있다는 것도 이해했어요… 말씀하신 방법에 협조할게요."
                 ))
                 responses.append(system_message(
                     "상호작용 단계가 완료되었습니다. 다음 단계로 SBAR 보고를 진행하세요."
@@ -1573,7 +1621,7 @@ with st.sidebar.expander("검사 설명 세부 항목", expanded=False):
 with st.sidebar.expander("상호작용 세부 항목", expanded=False):
     st.write(f"{'✅' if st.session_state.problem_identified else '⬜'} 환자 문제 확인")
     st.write(f"{'✅' if st.session_state.goal_set else '⬜'} 간호목표 공유")
-    st.write(f"{'✅' if st.session_state.means_explained else '⬜'} 목표달성 방법 설명")
+    st.write(f"{'✅' if st.session_state.means_explained else '⬜'} 목표달성 방법 설명: 산소요법, 약물치료, 심전도 재확인, 관상동맥조영술 준비 가능성")
     st.write(f"{'✅' if st.session_state.agreement_obtained else '⬜'} 환자의 이해와 참여 확인")
 
 with st.sidebar.expander("중재 설명 세부 항목", expanded=False):
