@@ -343,6 +343,13 @@ def init_state() -> None:
         "agreement_obtained": False,
         "interaction_completed": False,
 
+        # 상호작용 단계의 목표달성 방법 설명 내부 확인용
+        # 화면에는 1개 항목으로만 표시하되, 내부적으로는 4가지가 모두 들어왔는지 확인한다.
+        "interaction_oxygen_method_explained": False,
+        "interaction_medication_method_explained": False,
+        "interaction_ecg_recheck_method_explained": False,
+        "interaction_cag_method_explained": False,
+
         # 중재 설명 누적 인식
         "oxygen_explained": False,
         "medication_explained": False,
@@ -522,27 +529,29 @@ def get_exam_patient_response_for_current_state(updates: List[str]) -> str:
 
 
 def get_interaction_patient_response_for_current_state(updates: List[str]) -> str:
-    """상호작용 단계에서 현재 누적 상태에 맞는 환자 반응을 반환한다."""
+    """상호작용 단계에서 현재 순서에 맞는 환자 반응을 반환한다.
+
+    진행 순서:
+    1) 환자 문제 확인
+    2) 간호목표 공유
+    3) 목표달성 방법 설명
+    4) 환자의 이해와 참여 확인
+    
+    중요: 환자는 아직 설명받지 않은 목표달성 방법을 먼저 말하지 않는다.
+    """
+    if not st.session_state.problem_identified:
+        return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 지금 제 상태에서 무엇이 가장 문제인지 쉽게 설명해 주세요…"
+
     if st.session_state.problem_identified and not st.session_state.goal_set:
-        return "네… 제일 힘든 건 가슴 통증이랑 숨찬 거예요. 그럼 지금 치료 목표는 통증을 줄이고 숨쉬기 편하게 하는 건가요?"
-    if st.session_state.goal_set and not st.session_state.problem_identified:
-        return "통증을 줄이고 숨쉬기 편해지는 게 목표라는 건 알겠어요… 그런데 지금 제 상태에서 가장 문제가 되는 게 무엇인지 다시 설명해 주세요."
-    if (
-        st.session_state.problem_identified
-        and st.session_state.goal_set
-        and not st.session_state.means_explained
-    ):
+        return "네… 제일 힘든 건 가슴 통증이랑 숨찬 거예요. 그럼 지금 치료 목표는 무엇인지 설명해 주세요."
+
+    if st.session_state.problem_identified and st.session_state.goal_set and not st.session_state.means_explained:
         return "제 문제와 목표는 이해했어요… 그 목표를 위해 앞으로 어떤 치료나 간호를 받게 되는지 알려주세요."
-    if (
-        st.session_state.problem_identified
-        and st.session_state.goal_set
-        and st.session_state.means_explained
-        and not st.session_state.agreement_obtained
-    ):
-        return "가슴 통증과 숨찬 증상을 줄이기 위해 산소랑 약물치료를 하고, 심전도도 다시 확인한다는 건 이해했어요… 막힌 혈관이 있는지 확인하고 필요한 치료를 빨리 진행하려면 관상동맥조영술 준비가 필요할 수 있다는 거죠? 제가 협조하면 되는 건가요?"
-    if updates:
-        return "조금 이해됐어요… 제 문제, 치료 목표, 그리고 앞으로 받을 방법을 한 번만 더 연결해서 설명해 주세요."
-    return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 지금 제 문제와 치료 목표를 쉽게 설명해 주세요…"
+
+    if st.session_state.problem_identified and st.session_state.goal_set and st.session_state.means_explained and not st.session_state.agreement_obtained:
+        return "산소요법, 약물치료, 심전도 재확인, 관상동맥조영술 준비 가능성까지 설명해 주셔서 이해했어요… 제가 협조하면 되는 건가요?"
+
+    return "네… 설명해 주신 내용은 이해했어요. 말씀하신 방법에 협조하겠습니다."
 
 
 def get_intervention_patient_response_for_current_state(updates: List[str]) -> str:
@@ -996,10 +1005,14 @@ def update_exam_explanation_state(text: str) -> List[str]:
 
 
 def update_interaction_state(text: str) -> List[str]:
-    """문제 확인, 목표 설정, 방법 제시, 합의/협조 확인을 누적 인식한다."""
+    """상호작용 단계를 순서대로 누적 인식한다.
+
+    한 번의 입력에 여러 내용이 들어 있어도 현재 필요한 단계 1개만 먼저 처리한다.
+    따라서 '간호목표 공유' 단계에서 목표달성 방법 문구가 함께 들어가도
+    같은 입력에서 '목표달성 방법 설명'까지 동시에 체크되지 않는다.
+    """
     updates = []
 
-    # 12명 사전 트리거 자료 + King 상호작용 4요소 반영
     problem_keywords = [
         "문제", "현재 문제", "가장 힘든", "가장 큰 문제",
         "가슴 통증", "흉통", "가슴 답답", "답답",
@@ -1010,20 +1023,32 @@ def update_interaction_state(text: str) -> List[str]:
     goal_keywords = [
         "목표", "공동 목표", "함께 목표",
         "통증을 줄", "통증 감소", "통증 완화", "흉통 완화",
-        "숨쉬기 편", "숨 쉬기 편", "호흡을 편", "호흡곤란 완화",
+        "숨쉬기 편", "숨 쉬기 편", "호흡을 편", "호흡곤란 완화", "호흡곤란 감소",
         "불안을 줄", "불안 완화", "불안 감소", "안정"
     ]
-    means_keywords = [
-        "이를 위해", "방법", "필요한 이유", "다음 조치", "우선 조치",
-        "처치 필요", "산소", "산소요법", "산소 공급", "산소공급",
-        "약물", "약", "약물 치료", "약물 투여", "약물 작용",
-        "니트로", "니트로글리세린", "ntg",
-        "아스피린", "aspirin", "아스피린 중재",
-        "플라빅스", "plavix", "클로피도그렐", "clopidogrel",
-        "심전도", "심전도 재확인", "ecg monitoring", "모니터링",
-        "관상동맥조영술", "관상동맥 조영술", "cag", "cag 준비", "cag preparation",
-        "처치", "중재", "치료", "진행", "시행", "적용"
+
+    oxygen_method_keywords = [
+        "산소", "산소요법", "산소 요법", "산소 공급", "산소공급",
+        "o2", "o₂", "oxygen"
     ]
+    medication_method_keywords = [
+        "약물", "약물치료", "약물 치료", "약", "투약",
+        "니트로", "니트로글리세린", "ntg",
+        "아스피린", "aspirin", "플라빅스", "plavix",
+        "클로피도그렐", "clopidogrel", "medication", "medicine", "drug"
+    ]
+    ecg_recheck_method_keywords = [
+        "심전도 재확인", "심전도 다시", "심전도를 다시", "심전도도 다시",
+        "심전도 재검", "심전도 재검사", "12-lead ecg re-check",
+        "12-lead ecg recheck", "ecg re-check", "ecg recheck",
+        "ekg re-check", "ekg recheck"
+    ]
+    cag_method_keywords = [
+        "관상동맥조영술", "관상동맥 조영술", "cag",
+        "cag preparation", "cag 준비", "조영술 준비",
+        "막힌 혈관", "혈관 확인", "coronary angiography"
+    ]
+
     agreement_keywords = [
         "협조", "환자 협조", "협조 요청",
         "협조해 주실 수", "협조해주시겠", "협조해 주시겠",
@@ -1032,25 +1057,58 @@ def update_interaction_state(text: str) -> List[str]:
         "괜찮을까요", "괜찮으실까요",
         "진행해도", "진행해도 괜찮", "진행해도 될까요",
         "해도 될까요", "이 방법으로", "이렇게 진행",
-        "이해되도록", "함께", "같이"
+        "이해되셨나요", "이해하셨나요", "이해되시나요",
+        "cooperate", "cooperation", "agree", "consent", "proceed",
+        "can we proceed", "may i proceed", "is it okay", "okay to proceed"
     ]
 
-    if has_any(text, problem_keywords):
-        st.session_state.problem_identified = True
-        updates.append("환자 문제 확인")
-    if has_any(text, goal_keywords):
-        st.session_state.goal_set = True
-        updates.append("간호목표 공유")
-    if has_any(text, means_keywords):
-        st.session_state.means_explained = True
-        updates.append("목표달성 방법 설명")
-    if has_any(text, agreement_keywords):
-        st.session_state.agreement_obtained = True
-        updates.append("이해·참여 확인")
+    # 1단계: 환자 문제 확인
+    # 아직 문제 확인이 안 된 상태에서는 같은 입력에 목표나 방법이 포함되어도
+    # 우선 '환자 문제 확인'만 체크한다.
+    if not st.session_state.problem_identified:
+        if has_any(text, problem_keywords):
+            st.session_state.problem_identified = True
+            updates.append("환자 문제 확인")
+        return updates
 
-    # King의 목표달성이론에서 상호작용은 문제 확인, 간호목표 공유,
-    # 목표달성 방법 설명, 이해·참여 확인이 모두 포함되어야 하므로
-    # 4요소가 모두 충족될 때 상호작용 완료로 인정한다.
+    # 2단계: 간호목표 공유
+    # 문제 확인 후에는 목표만 체크한다. 같은 입력에 방법 설명 문구가 있어도
+    # 이번 입력에서는 목표달성 방법 설명을 같이 체크하지 않는다.
+    if not st.session_state.goal_set:
+        if has_any(text, goal_keywords):
+            st.session_state.goal_set = True
+            updates.append("간호목표 공유")
+        return updates
+
+    # 3단계: 목표달성 방법 설명
+    # 문제와 목표가 모두 확인된 다음 입력부터 방법 설명을 인식한다.
+    if not st.session_state.means_explained:
+        if has_any(text, oxygen_method_keywords):
+            st.session_state.interaction_oxygen_method_explained = True
+        if has_any(text, medication_method_keywords):
+            st.session_state.interaction_medication_method_explained = True
+        if has_any(text, ecg_recheck_method_keywords):
+            st.session_state.interaction_ecg_recheck_method_explained = True
+        if has_any(text, cag_method_keywords):
+            st.session_state.interaction_cag_method_explained = True
+
+        if (
+            st.session_state.interaction_oxygen_method_explained
+            and st.session_state.interaction_medication_method_explained
+            and st.session_state.interaction_ecg_recheck_method_explained
+            and st.session_state.interaction_cag_method_explained
+        ):
+            st.session_state.means_explained = True
+            updates.append("목표달성 방법 설명")
+        return updates
+
+    # 4단계: 환자의 이해와 참여 확인
+    # 목표달성 방법 설명이 끝난 다음 입력부터 이해·참여 확인을 인정한다.
+    if not st.session_state.agreement_obtained:
+        if has_any(text, agreement_keywords):
+            st.session_state.agreement_obtained = True
+            updates.append("이해·참여 확인")
+
     if (
         st.session_state.problem_identified
         and st.session_state.goal_set
@@ -1062,7 +1120,6 @@ def update_interaction_state(text: str) -> List[str]:
         mark_checklist("8. 상호작용: 간호목표 공유 및 목표달성 방법 확인")
 
     return updates
-
 
 def update_intervention_explanation_state(text: str) -> List[str]:
     """산소, 약물, 목적, 이상반응 안내, 협조 요청을 누적 인식한다."""
