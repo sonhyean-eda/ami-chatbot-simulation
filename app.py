@@ -796,8 +796,8 @@ def update_exam_explanation_state(text: str) -> List[str]:
     ]
     ecg_explain_keywords = [
         "심장 전기", "전기적 변화", "전기 신호", "전기 활동",
-        "심장 상태", "심장 확인", "심장 상태 확인",
         "심장 리듬", "심장 박동", "심장의 변화",
+        "심장 상태", "심장 확인", "심장 상태 확인",        
         "heart condition", "heart status", "electrical changes", "electrical activity",
         "heart rhythm", "heart signal"
     ]
@@ -971,7 +971,7 @@ def update_intervention_explanation_state(text: str) -> List[str]:
 
     side_effect_keywords = [
         "어지럽", "어지러움", "두통", "출혈", "멍", "구토", "불편", "불편감", "이상", "부작용",
-        "통증 악화", "호흡곤란", "숨이 더 차", "말씀", "알려",
+        "통증 악화", "호흡곤란", "숨이 더 차", "말씀", "알려", "호출벨",
         "바로 말", "바로 말씀", "불편하면", "불편하면 말씀",
         "dizzy", "dizziness", "headache", "uncomfortable", "discomfort",
         "side effect", "worsening pain", "difficulty breathing", "tell me",
@@ -1076,7 +1076,7 @@ def classify_input(user_text: str) -> str:
     closing_keywords = [
         "바로 말씀", "말씀해주세요", "말씀해 주세요", "알려주세요", "알려 주세요",
         "계속 관찰", "계속 살피", "옆에 있겠습니다", "상태가 변하면", "통증이 심해지면",
-        "답답해지면", "불편하면 말씀", "불편하면 알려", "계속 확인하겠습니다",
+        "답답해지면", "불편하면 말씀", "불편하면 알려", "계속 확인하겠습니다", 
     ]
     if st.session_state.intervention_done and has_any(text, closing_keywords):
         return "closing_therapeutic"
@@ -1215,7 +1215,8 @@ def classify_input(user_text: str) -> str:
     ami_judgment_keywords = [
         "급성심근경색 가능성", "급성심근경색 의심", "ami 가능성", "ami 의심",
         "심근경색 가능성", "심근경색 의심", "stemi 가능성", "stemi 의심",
-        "심장 문제 가능성", "심장 혈관 문제", "심혈관 문제", "심장 쪽 문제",
+        "심장 문제 가능성", "심장 혈관 문제", "심혈관 문제", "심장 쪽 문제", 
+        "심혈관질환", "심혈관",
         "수집한 자료를 종합", "자료를 종합", "증상과 위험요인", "위험요인",
         "현재 증상으로 보아", "현재 증상으로 봤을 때", "심장 상태 확인이 필요"
     ]
