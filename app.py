@@ -325,11 +325,10 @@ def init_state() -> None:
         "cooperation_formed": False,
 
         # 목표달성 재사정 세부 항목
-        # 통증·호흡곤란·불안 3개 증상 확인 후, 활력징후 재측정 요청이 있어야 11단계가 완료됨
+        # 통증·호흡곤란·불안 3개 증상 확인 후 11단계가 완료됨
         "pain_relief_checked": False,
         "breathing_relief_checked": False,
         "anxiety_relief_checked": False,
-        "post_vitals_checked": False,
 
         # 검사 설명 누적 인식
         "ecg_explained": False,
@@ -474,8 +473,8 @@ def reassessment_symptoms_all_checked() -> bool:
 
 
 def reassessment_all_checked() -> bool:
-    """통증·호흡곤란·불안 확인과 중재 후 활력징후 재측정이 모두 끝났는지 확인한다."""
-    return reassessment_symptoms_all_checked() and st.session_state.get("post_vitals_checked", False)
+    """통증·호흡곤란·불안 완화 확인이 모두 끝났는지 확인한다."""
+    return reassessment_symptoms_all_checked()
 
 
 def is_post_intervention_vitals_request(text: str) -> bool:
@@ -833,7 +832,7 @@ def get_current_guidance() -> str:
     if not st.session_state.intervention_done:
         return "이제 처방에 따라 산소요법, NTG, Aspirin, Plavix, ECG monitoring 유지, 12-lead ECG 재확인 및 CAG preparation을 수행해보세요."
     if not st.session_state.reassessment_done:
-        return "중재 후 통증, 호흡곤란, 불안 변화와 활력징후를 재사정하고, 처음 함께 설정한 목표가 달성되었는지 확인해보세요."
+        return "중재 후 통증 완화 여부, 호흡곤란 감소 여부, 불안 감소 여부를 확인하고, 처음 함께 설정한 목표가 달성되었는지 확인해보세요."
     return "시뮬레이션 흐름은 완료되었습니다. 디브리핑에서 수행 과정을 성찰해보세요."
 
 
@@ -850,7 +849,7 @@ STEP_HELP: Dict[str, Tuple[str, str]] = {
     "10. 교류작용: 중재 설명 및 중재 수행": ("산소요법, NTG, Aspirin, Plavix, ECG monitoring, 12-lead ECG 재확인 및 CAG preparation 등 처방 기반 중재를 설명하고 수행합니다.", "중재 설명 후 처방 기반 중재 수행이 이루어지면 완료됩니다."),
     "11. 목표달성: 중재 후 재사정 및 목표달성 확인": (
         "중재 후 변화된 환자 상태를 바탕으로 통증 완화, 호흡곤란 감소, 불안 감소 목표가 달성되었는지 확인합니다.",
-        "중재 후 통증 완화, 호흡곤란 감소, 불안 감소 3가지를 모두 확인하고 활력징후를 재사정한 뒤, 처음 함께 설정한 목표의 달성 여부를 확인하면 완료됩니다."
+        "중재 후 통증 완화, 호흡곤란 감소, 불안 감소 3가지를 모두 확인하고, 처음 함께 설정한 목표의 달성 여부를 확인하면 완료됩니다."
     ),
     "12. 성찰: 디브리핑": ("사정, 판단, 설명, 보고, 중재, 재사정 과정을 성찰합니다.", "디브리핑을 열고 답변을 작성하면 완료됩니다."),
 }
@@ -1685,27 +1684,16 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             ))
             responses.append(patient_message("네… 설명 들었으니까 진행해주세요. 아직 무섭긴 한데, 선생님 말씀 믿고 해볼게요…"))
             # 중재 후 활력징후 재측정값과 5분 후 재사정 안내는 환자 반응 다음에 하나의 화면으로 제시한다.
-            st.session_state.post_vitals_checked = True
+            # 이 값은 화면 안내용이며 11단계 완료 조건에는 포함하지 않는다.
             responses.append(post_intervention_vital_response())
 
     elif category == "reassessment":
-        # 11단계는 통증 완화, 호흡곤란 감소, 불안 감소 확인 후
-        # 학생이 활력징후 재측정을 요청했을 때 중재 후 활력징후를 제시한다.
+        # 재사정 단계는 학생이 질문한 항목에 대해서만 환자가 답하도록 한다.
+        # 중재 후 활력징후와 5분 후 재사정 안내는 중재 수행 직후 이미 제시되며,
+        # 활력징후 재측정은 11단계 완료 조건이나 세부 체크 항목에 포함하지 않는다.
         updates = update_reassessment_state(user_text)
-        vitals_requested = is_post_intervention_vitals_request(user_text)
 
-        # 환자는 이번에 질문받은 증상 항목에 대해서만 답한다.
-        # 활력징후만 요청한 입력에는 환자 대답을 추가하지 않고 시스템 활력징후만 제시한다.
-        if updates:
-            responses.append(patient_message(get_reassessment_patient_response_for_current_state(updates)))
-        elif not vitals_requested:
-            responses.append(patient_message(get_reassessment_patient_response_for_current_state(updates)))
-
-        # 중재 후 활력징후와 5분 후 재사정 안내는 중재 수행 직후 이미 제시한다.
-        # 따라서 재사정 단계에서 활력징후를 다시 언급해도 중복 출력하지 않는다.
-        if vitals_requested and not st.session_state.get("post_vitals_checked", False):
-            st.session_state.post_vitals_checked = True
-            responses.append(post_intervention_vital_response())
+        responses.append(patient_message(get_reassessment_patient_response_for_current_state(updates)))
 
         if reassessment_all_checked():
             st.session_state.reassessment_done = True
@@ -1715,7 +1703,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             # 자동 화면 이동을 막기 위해 디브리핑 영역으로 강제 스크롤하지 않는다.
             st.session_state.ended = True
             responses.append(completion_message(
-                "중재 후 통증, 호흡곤란, 불안 변화와 활력징후 재측정, 목표달성 확인이 완료되었습니다. "
+                "중재 후 통증 완화 여부, 호흡곤란 감소 여부, 불안 감소 여부 확인과 목표달성 확인이 완료되었습니다. "
                 "시뮬레이션이 종료되었습니다. 아래 디브리핑 버튼을 눌러 "
                 "환자 사정, 판단, 검사 및 중재 설명, SBAR 보고, 중재 수행, 재사정과 목표달성 확인 과정을 성찰해 주세요."
             ))
@@ -1723,7 +1711,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             st.session_state.reassessment_done = False
             st.session_state.goal_achieved = False
             responses.append(system_message(
-                "11단계 완료 조건: 중재 후 통증 완화, 호흡곤란 감소, 불안 감소 3가지와 활력징후 재측정을 모두 확인해야 목표달성 확인이 완료됩니다."
+                "11단계 완료 조건: 중재 후 통증 완화, 호흡곤란 감소, 불안 감소 3가지를 모두 확인해야 목표달성 확인이 완료됩니다."
             ))
 
     elif category == "closing_therapeutic":
@@ -1799,14 +1787,12 @@ with st.sidebar.expander("재사정 세부 항목", expanded=False):
     st.write(f"{'✅' if st.session_state.pain_relief_checked else '⬜'} 통증 완화 확인")
     st.write(f"{'✅' if st.session_state.breathing_relief_checked else '⬜'} 호흡곤란 감소 확인")
     st.write(f"{'✅' if st.session_state.anxiety_relief_checked else '⬜'} 불안 감소 확인")
-    st.write(f"{'✅' if st.session_state.get('post_vitals_checked', False) else '⬜'} 활력징후 재측정")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🎯 목표 달성 지표")
 st.sidebar.write(f"{'✅' if st.session_state.cooperation_formed else '⬜'} 환자의 이해와 참여 확인")
 st.sidebar.write(f"{'✅' if st.session_state.intervention_done else '⬜'} 처방 기반 중재 수행")
 st.sidebar.write(f"{'✅' if reassessment_symptoms_all_checked() else '⬜'} 통증·호흡곤란·불안 완화 확인")
-st.sidebar.write(f"{'✅' if st.session_state.get('post_vitals_checked', False) else '⬜'} 중재 후 활력징후 재측정")
 
 # ------------------------------------------------------------
 # 13. 시작 / 초기화 버튼
