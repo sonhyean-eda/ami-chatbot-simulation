@@ -657,6 +657,10 @@ def render_message(msg: Dict[str, str]) -> None:
     raw = msg.get("content", "")
     role = msg.get("role", "assistant")
 
+    # 환자 확인 메시지는 내부 진행상태 체크용으로만 사용하고 화면에는 표시하지 않는다.
+    if raw.startswith("[환자확인]"):
+        return
+
     # 기본값
     label = "안내"
     body = raw
@@ -725,11 +729,8 @@ def render_message(msg: Dict[str, str]) -> None:
         system_body = raw.replace("[시스템]", "", 1).strip()
 
         if system_body.startswith("환자 확인") or "등록번호" in system_body or "팔찌" in system_body:
-            label = "시스템 | 환자 확인"
-            body = system_body
-            bg = "#F1F3F5"
-            border = "#495057"
-            emoji = "🪪"
+            # 기존 세션에 남아 있는 환자 확인 시스템 메시지도 화면에 표시하지 않는다.
+            return
         elif system_body.startswith("의사 처방") or "O₂" in system_body or "NTG" in system_body or "Aspirin" in system_body:
             label = "시스템 | 의사 처방"
             body = system_body
@@ -806,7 +807,7 @@ STEP_HELP: Dict[str, Tuple[str, str]] = {
     "2. 지각: 통증 및 동반 증상 사정": ("통증 위치, 양상, 시작 시점, NRS, 턱·어깨·등으로 퍼지는 방사통 및 등 통증, 호흡곤란, 식은땀, 불안, 악화요인 및 완화요인을 사정합니다.", "통증/동반증상, 악화요인 또는 완화요인 관련 질문이 입력되면 완료됩니다."),
     "3. 지각: 활력징후 확인": ("혈압, 맥박, 호흡수, 산소포화도, 체온을 확인합니다.", "활력징후 확인 요청 시 시스템이 수치를 제시하면 완료됩니다."),
     "4. 지각: 병력 및 위험요인 사정": ("고혈압, 복용약, 흡연력, 가족력, 알레르기 여부, 최근 항응고제/항혈소판제 복용 여부, 출혈성 질환 여부를 확인합니다.", "병력, 복용약, 항응고제/항혈소판제 복용 여부, 출혈성 질환 여부 또는 위험요인 관련 질문이 입력되면 완료됩니다."),
-    "5. 판단: AMI 의심 상황 판단 및 검사 필요성 인식": ("수집한 자료를 바탕으로 AMI 가능성(심혈관질환 가능성)과 ECG/심근효소 검사 필요성을 판단합니다.", "AMI 가능성(심혈관질환 가능성) 또는 검사 필요성을 언급하면 완료됩니다."),
+    "5. 판단: AMI 의심 상황 판단 및 검사 필요성 인식": ("수집한 자료를 바탕으로 AMI 가능성과 ECG/심근효소 검사 필요성을 판단합니다.", "AMI 가능성 또는 검사 필요성을 언급하면 완료됩니다."),
     "6. 행위/반응: 검사 필요성 설명 및 환자의 이해·참여 확인": ("ECG와 혈액검사의 필요성을 쉽게 설명하고 환자의 이해와 참여 의사를 확인합니다.", "심전도 설명, 혈액검사 설명, 검사 참여 확인이 모두 인식되면 완료됩니다."),
     "7. 상호작용: 검사결과 기반 문제 구체화": ("검사결과를 확인하고 환자의 주요 문제를 구체화합니다.", "검사결과 확인 후 완료됩니다."),
     "8. 상호작용: 간호목표 공유 및 목표달성 방법 확인": ("환자 문제를 확인하고, 통증 완화·호흡곤란 감소·불안 감소를 공동 목표로 설정한 뒤, 산소요법과 약물치료, 심전도 재확인, 막힌 혈관 확인과 빠른 치료를 위한 관상동맥조영술 준비가 필요할 수 있음을 환자에게 설명합니다.", "문제 확인, 목표 공유, 목표달성 방법 설명(산소요법, 약물치료, 심전도 재확인, 관상동맥조영술 준비 가능성), 참여 확인이 모두 인식되면 완료됩니다."),
@@ -1423,10 +1424,8 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
     if category == "intro":
         st.session_state.intro_done = True
         mark_checklist("1. 지각: 초기 접촉 및 주호소 확인")
-        if has_any(user_text, ["등록번호", "등록 번호", "환자번호", "환자 번호", "팔찌", "환자 팔찌", "손목밴드", "본인 확인", "환자 확인", "id band", "wristband"]):
-            responses.append(patient_verification_message(
-                f"환자 확인 완료: 이름 {PATIENT_INFO['name']}, 등록번호 {PATIENT_INFO['registration_number']}, 팔찌 정보 {PATIENT_INFO['wristband']}"
-            ))
+        # 환자 확인은 체크리스트 완료 조건으로만 반영하고,
+        # 화면에는 별도의 [시스템 | 환자 확인] 메시지를 표시하지 않는다.
         responses.append(patient_message(
             f"네… {PATIENT_INFO['name']}입니다. 등록번호는 {PATIENT_INFO['registration_number']}이고, 팔찌도 맞아요. 가슴 한가운데가 너무 꽉 조여요… 숨도 차고 식은땀이 나요. 저 이러다 큰일 나는 거 아니죠?"
         ))
