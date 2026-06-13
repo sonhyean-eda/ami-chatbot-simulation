@@ -441,31 +441,26 @@ def update_reassessment_state(text: str) -> List[str]:
 
 
 def get_reassessment_patient_response_for_current_state(updates: List[str]) -> str:
-    """재사정 단계에서 누락된 항목을 안내하되, 정답처럼 보이지 않게 환자 반응으로 반환한다."""
+    """재사정 단계에서 학생이 이번에 질문한 항목에 대해서만 환자 반응을 반환한다."""
     response_parts = []
 
-    if st.session_state.pain_relief_checked:
+    # 중요: 이전에 이미 확인된 누적 상태가 아니라,
+    # 이번 입력에서 새로 인식된 항목(updates)에 대해서만 답한다.
+    # 따라서 환자가 "숨쉬기/불안도 확인해 주세요"처럼
+    # 아직 묻지 않은 항목을 안내하지 않는다.
+    if "통증 완화 확인" in updates:
         response_parts.append("가슴 통증은 처음 8점에서 지금은 3점 정도로 줄었어요.")
-    if st.session_state.breathing_relief_checked:
+
+    if "호흡곤란 감소 확인" in updates:
         response_parts.append("숨쉬기는 아까보다 조금 편해졌어요.")
-    if st.session_state.anxiety_relief_checked:
-        response_parts.append("불안도 아까보다는 많이 줄었어요.")
 
-    missing = []
-    if not st.session_state.pain_relief_checked:
-        missing.append("통증이 몇 점인지")
-    if not st.session_state.breathing_relief_checked:
-        missing.append("숨쉬기가 편해졌는지")
-    if not st.session_state.anxiety_relief_checked:
-        missing.append("불안이 줄었는지")
+    if "불안 감소 확인" in updates:
+        response_parts.append("불안도 아까보다는 많이 줄었어요. 아직 조금 걱정은 되지만 처음보다는 안정됐어요.")
 
-    if missing:
-        if not response_parts:
-            response_parts.append("치료 후 상태를 다시 확인해 주시는 거죠…?")
-        response_parts.append("그리고 " + ", ".join(missing) + "도 함께 확인해 주세요.")
+    if response_parts:
+        return " ".join(response_parts)
 
-    return " ".join(response_parts)
-
+    return "치료 후 상태를 다시 확인해 주시는 거죠…?"
 
 def reassessment_all_checked() -> bool:
     """통증, 호흡곤란, 불안 완화 확인이 모두 끝났는지 확인한다."""
@@ -1169,12 +1164,21 @@ def classify_input(user_text: str) -> str:
         "통증 변화", "통증 감소", "지금 통증", "통증은 지금",
         "가슴통증 몇 점", "가슴 통증 몇 점", "몇 점", "nrs", "통증척도",
         "호흡 상태", "호흡은", "숨쉬기", "숨 쉬기", "숨 쉬는 건 괜찮",
-        "숨쉬는 건 괜찮", "불편감", "불안 정도", "불안은",
-        "불안 완화", "불안 감소", "어떠세요", "나아졌", "완화",
+        "숨쉬는 건 괜찮", "호흡곤란", "호흡 곤란", "불편감",
+        "불안 정도", "불안은", "불안감", "불안 완화", "불안 감소",
+        "어떠세요", "나아졌", "완화",
+        "활력징후", "활력 징후", "혈압", "맥박", "호흡수", "산소포화도",
         "목표 달성", "목표가 달성", "함께 설정한 목표", "처음 설정한 목표",
         "통증 완화 목표", "호흡곤란 감소 목표", "불안 감소 목표",
         "가장 불편", "가장 걱정", "아직 불편", "아직 걱정",
-        "계속 관찰", "계속 모니터링"
+        "계속 관찰", "계속 모니터링",
+        "reassess", "re-assess", "after treatment", "after intervention",
+        "after medication", "after mediation", "check back", "rate your chest pain",
+        "chest pain", "pain relief", "pain score", "scale of 0 to 10",
+        "breathing", "breathe", "breathing easier", "shortness of breath",
+        "dyspnea", "difficulty breathing", "anxiety", "anxious",
+        "anxiety decreased", "vital signs", "blood pressure", "pulse",
+        "respiratory rate", "oxygen saturation", "spo2", "goal achieved"
     ]
     if st.session_state.intervention_done and has_any(text, reassess_keywords):
         return "reassessment"
@@ -1640,22 +1644,22 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                 + "\n".join([f"- {order}" for order in DOCTOR_ORDER])
             ))
             responses.append(patient_message("네… 설명 들었으니까 진행해주세요. 아직 무섭긴 한데, 선생님 말씀 믿고 해볼게요…"))
-            responses.append(system_message("5분 후 환자의 통증, 호흡곤란, 불안 정도와 활력징후를 재사정하세요."))
+            responses.append(system_message("5분 후 환자의 통증 완화 여부, 호흡곤란 감소 여부, 불안 감소 여부와 활력징후를 재사정하세요."))
 
     elif category == "reassessment":
         # 11단계는 통증 완화, 호흡곤란 감소, 불안 감소 3개를 모두 확인해야 완료된다.
         updates = update_reassessment_state(user_text)
 
+        # 환자는 이번에 질문받은 항목에 대해서만 답한다.
+        # 예: 통증만 물으면 통증만 답하고, 호흡곤란/불안 확인을 안내하지 않는다.
+        responses.append(patient_message(get_reassessment_patient_response_for_current_state(updates)))
+
         if reassessment_all_checked():
             st.session_state.reassessment_done = True
             st.session_state.goal_achieved = True
             mark_checklist("11. 목표달성: 중재 후 재사정 및 목표달성 확인")
-            responses.append(patient_message(
-                "치료하고 나서 가슴 통증은 8점에서 3점 정도로 줄었어요. "
-                "숨쉬기도 아까보다 조금 편해졌고, 불안도 많이 줄었어요. "
-                "처음에 함께 정한 통증 완화, 호흡곤란 감소, 불안 감소 목표가 어느 정도 달성된 것 같아요. "
-                "아직 조금 걱정은 되지만, 다시 아프거나 숨이 차면 바로 말씀드릴게요."
-            ))
+
+            # 활력징후 재사정은 3개 증상 확인이 모두 끝난 뒤 시스템 정보로 제시한다.
             responses.append(vital_message(
                 "중재 후 활력징후 재측정\n"
                 f"- BP: {POST_INTERVENTION_VITAL_SIGNS['BP']}\n"
@@ -1675,7 +1679,6 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         else:
             st.session_state.reassessment_done = False
             st.session_state.goal_achieved = False
-            responses.append(patient_message(get_reassessment_patient_response_for_current_state(updates)))
             responses.append(system_message(
                 "11단계 완료 조건: 중재 후 통증 완화, 호흡곤란 감소, 불안 감소 3가지를 모두 확인해야 목표달성 확인이 완료됩니다."
             ))
