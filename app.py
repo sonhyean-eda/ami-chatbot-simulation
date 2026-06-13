@@ -59,7 +59,23 @@ div[data-testid="stChatInput"] {
 
 /* 정보 박스도 기본 폭 유지 */
 div[data-testid="stAlert"] {
-    font-size: 0.95rem;
+    font-size: 1.02rem;
+}
+
+
+/* 채팅창 메시지와 입력창 글자 크기 확대 */
+div[data-testid="stChatInput"] textarea {
+    font-size: 1.15rem !important;
+    line-height: 1.5 !important;
+}
+
+.stTextArea textarea, .stTextInput input {
+    font-size: 1.08rem !important;
+    line-height: 1.5 !important;
+}
+
+button, .stButton button {
+    font-size: 1.02rem !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -308,6 +324,11 @@ def init_state() -> None:
         "goal_achieved": False,
         "cooperation_formed": False,
 
+        # 목표달성 재사정 세부 항목: 3개가 모두 확인되어야 11단계가 완료됨
+        "pain_relief_checked": False,
+        "breathing_relief_checked": False,
+        "anxiety_relief_checked": False,
+
         # 검사 설명 누적 인식
         "ecg_explained": False,
         "blood_test_explained": False,
@@ -332,7 +353,6 @@ def init_state() -> None:
         # 디브리핑
         "show_debriefing": False,
         "debrief_submitted": False,
-        "scroll_to_debriefing": False,
     }
 
     for key, value in defaults.items():
@@ -389,6 +409,71 @@ def has_any(text: str, keywords: List[str]) -> bool:
 
 def count_true(values: List[bool]) -> int:
     return sum(1 for value in values if value)
+
+
+def update_reassessment_state(text: str) -> List[str]:
+    """중재 후 통증, 호흡곤란, 불안 완화 여부를 각각 누적 인식한다."""
+    updates = []
+
+    pain_keywords = [
+        "통증", "흉통", "가슴 통증", "가슴통증", "nrs", "통증척도", "통증 점수",
+        "몇 점", "아픈", "아프", "pain", "pain score"
+    ]
+    breathing_keywords = [
+        "호흡곤란", "호흡 곤란", "숨쉬기", "숨 쉬기", "숨", "숨찬", "숨 차",
+        "호흡", "산소포화도", "spo2", "breathing", "shortness of breath", "dyspnea"
+    ]
+    anxiety_keywords = [
+        "불안", "불안감", "걱정", "두려움", "무서", "안정", "anxiety", "anxious", "worry"
+    ]
+
+    if has_any(text, pain_keywords):
+        st.session_state.pain_relief_checked = True
+        updates.append("통증 완화 확인")
+    if has_any(text, breathing_keywords):
+        st.session_state.breathing_relief_checked = True
+        updates.append("호흡곤란 감소 확인")
+    if has_any(text, anxiety_keywords):
+        st.session_state.anxiety_relief_checked = True
+        updates.append("불안 감소 확인")
+
+    return updates
+
+
+def get_reassessment_patient_response_for_current_state(updates: List[str]) -> str:
+    """재사정 단계에서 누락된 항목을 안내하되, 정답처럼 보이지 않게 환자 반응으로 반환한다."""
+    response_parts = []
+
+    if st.session_state.pain_relief_checked:
+        response_parts.append("가슴 통증은 처음 8점에서 지금은 3점 정도로 줄었어요.")
+    if st.session_state.breathing_relief_checked:
+        response_parts.append("숨쉬기는 아까보다 조금 편해졌어요.")
+    if st.session_state.anxiety_relief_checked:
+        response_parts.append("불안도 아까보다는 많이 줄었어요.")
+
+    missing = []
+    if not st.session_state.pain_relief_checked:
+        missing.append("통증이 몇 점인지")
+    if not st.session_state.breathing_relief_checked:
+        missing.append("숨쉬기가 편해졌는지")
+    if not st.session_state.anxiety_relief_checked:
+        missing.append("불안이 줄었는지")
+
+    if missing:
+        if not response_parts:
+            response_parts.append("치료 후 상태를 다시 확인해 주시는 거죠…?")
+        response_parts.append("그리고 " + ", ".join(missing) + "도 함께 확인해 주세요.")
+
+    return " ".join(response_parts)
+
+
+def reassessment_all_checked() -> bool:
+    """통증, 호흡곤란, 불안 완화 확인이 모두 끝났는지 확인한다."""
+    return (
+        st.session_state.pain_relief_checked
+        and st.session_state.breathing_relief_checked
+        and st.session_state.anxiety_relief_checked
+    )
 
 
 def get_exam_patient_response_for_current_state(updates: List[str]) -> str:
@@ -674,14 +759,14 @@ def render_message(msg: Dict[str, str]) -> None:
     subtext_color = "#374151"
 
     html = f"""
-    <div style="background:{bg}; border-left:5px solid {border}; padding:2px 12px;
-                border-radius:8px; margin:2px 0; line-height:1.18; white-space:pre-wrap;
+    <div style="background:{bg}; border-left:5px solid {border}; padding:10px 14px;
+                border-radius:10px; margin:6px 0; line-height:1.45; white-space:pre-wrap;
                 color:{text_color}; box-shadow:0 1px 2px rgba(0,0,0,0.07);
-                font-size:1.35rem; width:100%;">
-        <div style="font-weight:800; margin-bottom:0px; color:{text_color}; font-size:1.35rem;">
+                font-size:1.45rem; width:100%;">
+        <div style="font-weight:800; margin-bottom:4px; color:{text_color}; font-size:1.35rem;">
             {emoji} {escape(label)}
         </div>
-        <div style="color:{subtext_color}; font-size:1.35rem;">{escape(body)}</div>
+        <div style="color:{subtext_color}; font-size:1.45rem;">{escape(body)}</div>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
@@ -729,7 +814,7 @@ STEP_HELP: Dict[str, Tuple[str, str]] = {
     "10. 교류작용: 중재 설명 및 중재 수행": ("산소요법, NTG, Aspirin, Plavix, ECG monitoring, 12-lead ECG 재확인 및 CAG preparation 등 처방 기반 중재를 설명하고 수행합니다.", "중재 설명 후 처방 기반 중재 수행이 이루어지면 완료됩니다."),
     "11. 목표달성: 중재 후 재사정 및 목표달성 확인": (
         "중재 후 변화된 환자 상태를 바탕으로 통증 완화, 호흡곤란 감소, 불안 감소 목표가 달성되었는지 확인합니다.",
-        "중재 후 통증, 호흡곤란, 불안 변화와 활력징후를 재사정하고, 처음 함께 설정한 목표의 달성 여부를 확인하면 완료됩니다."
+        "중재 후 통증 완화, 호흡곤란 감소, 불안 감소 3가지를 모두 확인하고 활력징후를 재사정한 뒤, 처음 함께 설정한 목표의 달성 여부를 확인하면 완료됩니다."
     ),
     "12. 성찰: 디브리핑": ("사정, 판단, 설명, 보고, 중재, 재사정 과정을 성찰합니다.", "디브리핑을 열고 답변을 작성하면 완료됩니다."),
 }
@@ -1537,31 +1622,42 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             responses.append(system_message("5분 후 환자의 통증, 호흡곤란, 불안 정도와 활력징후를 재사정하세요."))
 
     elif category == "reassessment":
-        st.session_state.reassessment_done = True
-        st.session_state.goal_achieved = True
-        mark_checklist("11. 목표달성: 중재 후 재사정 및 목표달성 확인")
-        responses.append(patient_message(
-            "치료하고 나서 가슴 통증은 8점에서 3점 정도로 줄었어요. "
-            "숨쉬기도 아까보다 조금 편해졌고, 불안도 많이 줄었어요. "
-            "처음에 함께 정한 통증 완화, 호흡곤란 감소, 불안 감소 목표가 어느 정도 달성된 것 같아요. "
-            "아직 조금 걱정은 되지만, 다시 아프거나 숨이 차면 바로 말씀드릴게요."
-        ))
-        responses.append(vital_message(
-            "중재 후 활력징후 재측정\n"
-            f"- BP: {POST_INTERVENTION_VITAL_SIGNS['BP']}\n"
-            f"- HR: {POST_INTERVENTION_VITAL_SIGNS['HR']}\n"
-            f"- RR: {POST_INTERVENTION_VITAL_SIGNS['RR']}\n"
-            f"- SpO₂: {POST_INTERVENTION_VITAL_SIGNS['SpO2']}\n"
-            f"- BT: {POST_INTERVENTION_VITAL_SIGNS['BT']}"
-        ))
+        # 11단계는 통증 완화, 호흡곤란 감소, 불안 감소 3개를 모두 확인해야 완료된다.
+        updates = update_reassessment_state(user_text)
 
-        st.session_state.ended = True
-        st.session_state.scroll_to_debriefing = True
-        responses.append(completion_message(
-            "중재 후 통증, 호흡곤란, 불안 변화와 활력징후 재측정, 목표달성 확인이 완료되었습니다. "
-            "시뮬레이션이 종료되었습니다. 아래 디브리핑 단계로 이동하여 "
-            "환자 사정, 판단, 검사 및 중재 설명, SBAR 보고, 중재 수행, 재사정과 목표달성 확인 과정을 성찰해 주세요."
-        ))
+        if reassessment_all_checked():
+            st.session_state.reassessment_done = True
+            st.session_state.goal_achieved = True
+            mark_checklist("11. 목표달성: 중재 후 재사정 및 목표달성 확인")
+            responses.append(patient_message(
+                "치료하고 나서 가슴 통증은 8점에서 3점 정도로 줄었어요. "
+                "숨쉬기도 아까보다 조금 편해졌고, 불안도 많이 줄었어요. "
+                "처음에 함께 정한 통증 완화, 호흡곤란 감소, 불안 감소 목표가 어느 정도 달성된 것 같아요. "
+                "아직 조금 걱정은 되지만, 다시 아프거나 숨이 차면 바로 말씀드릴게요."
+            ))
+            responses.append(vital_message(
+                "중재 후 활력징후 재측정\n"
+                f"- BP: {POST_INTERVENTION_VITAL_SIGNS['BP']}\n"
+                f"- HR: {POST_INTERVENTION_VITAL_SIGNS['HR']}\n"
+                f"- RR: {POST_INTERVENTION_VITAL_SIGNS['RR']}\n"
+                f"- SpO₂: {POST_INTERVENTION_VITAL_SIGNS['SpO2']}\n"
+                f"- BT: {POST_INTERVENTION_VITAL_SIGNS['BT']}"
+            ))
+
+            # 자동 화면 이동을 막기 위해 디브리핑 영역으로 강제 스크롤하지 않는다.
+            st.session_state.ended = True
+            responses.append(completion_message(
+                "중재 후 통증, 호흡곤란, 불안 변화와 활력징후 재측정, 목표달성 확인이 완료되었습니다. "
+                "시뮬레이션이 종료되었습니다. 아래 디브리핑 버튼을 눌러 "
+                "환자 사정, 판단, 검사 및 중재 설명, SBAR 보고, 중재 수행, 재사정과 목표달성 확인 과정을 성찰해 주세요."
+            ))
+        else:
+            st.session_state.reassessment_done = False
+            st.session_state.goal_achieved = False
+            responses.append(patient_message(get_reassessment_patient_response_for_current_state(updates)))
+            responses.append(system_message(
+                "11단계 완료 조건: 중재 후 통증 완화, 호흡곤란 감소, 불안 감소 3가지를 모두 확인해야 목표달성 확인이 완료됩니다."
+            ))
 
     elif category == "closing_therapeutic":
         responses.append(patient_message("네… 다시 아프거나 숨이 차면 바로 말씀드릴게요. 옆에서 봐주시니까 조금 안심돼요…"))
@@ -1632,11 +1728,16 @@ with st.sidebar.expander("중재 설명 세부 항목", expanded=False):
     st.write(f"{'✅' if st.session_state.side_effect_guidance_given else '⬜'} 이상반응/불편감 안내")
     st.write(f"{'✅' if st.session_state.intervention_cooperation_requested else '⬜'} 중재 참여 확인")
 
+with st.sidebar.expander("재사정 세부 항목", expanded=True):
+    st.write(f"{'✅' if st.session_state.pain_relief_checked else '⬜'} 통증 완화 확인")
+    st.write(f"{'✅' if st.session_state.breathing_relief_checked else '⬜'} 호흡곤란 감소 확인")
+    st.write(f"{'✅' if st.session_state.anxiety_relief_checked else '⬜'} 불안 감소 확인")
+
 st.sidebar.markdown("---")
 st.sidebar.subheader("🎯 목표 달성 지표")
 st.sidebar.write(f"{'✅' if st.session_state.cooperation_formed else '⬜'} 환자의 이해와 참여 확인")
 st.sidebar.write(f"{'✅' if st.session_state.intervention_done else '⬜'} 처방 기반 중재 수행")
-st.sidebar.write(f"{'✅' if st.session_state.goal_achieved else '⬜'} 통증·호흡곤란·불안 완화 확인")
+st.sidebar.write(f"{'✅' if reassessment_all_checked() else '⬜'} 통증·호흡곤란·불안 완화 확인")
 
 # ------------------------------------------------------------
 # 13. 시작 / 초기화 버튼
@@ -1715,25 +1816,11 @@ if st.session_state.started and not st.session_state.ended:
 if st.session_state.started:
     st.markdown('<div id="debriefing-section"></div>', unsafe_allow_html=True)
 
-    if st.session_state.get("scroll_to_debriefing", False):
-        st.session_state.scroll_to_debriefing = False
-        st.components.v1.html(
-            """
-            <script>
-            const target = window.parent.document.getElementById("debriefing-section");
-            if (target) {
-                target.scrollIntoView({behavior: "smooth", block: "start"});
-            }
-            </script>
-            """,
-            height=0,
-        )
-
     st.markdown("---")
     st.subheader("🧠 디브리핑")
 
     if not st.session_state.show_debriefing and not st.session_state.debrief_submitted:
-        ready_for_debriefing = st.session_state.reassessment_done or st.session_state.goal_achieved
+        ready_for_debriefing = st.session_state.reassessment_done and st.session_state.goal_achieved
         if not ready_for_debriefing:
             st.info("중재 후 재사정과 목표달성 확인까지 진행한 후 디브리핑을 시작하는 것을 권장합니다.")
         else:
@@ -1742,7 +1829,6 @@ if st.session_state.started:
             mark_checklist("12. 성찰: 디브리핑")
             st.session_state.ended = True
             st.session_state.show_debriefing = True
-            st.session_state.scroll_to_debriefing = True
             st.rerun()
 
     if st.session_state.show_debriefing and not st.session_state.debrief_submitted:
@@ -1768,13 +1854,11 @@ if st.session_state.started:
                 mark_checklist("12. 성찰: 디브리핑")
                 st.session_state.debrief_submitted = True
                 st.session_state.show_debriefing = False
-                st.session_state.scroll_to_debriefing = True
                 st.rerun()
         with col2:
             if st.button("디브리핑 취소"):
                 st.session_state.show_debriefing = False
                 st.session_state.ended = False
-                st.session_state.scroll_to_debriefing = True
                 st.rerun()
 
     if st.session_state.debrief_submitted:
