@@ -1728,7 +1728,7 @@ with st.sidebar.expander("중재 설명 세부 항목", expanded=False):
     st.write(f"{'✅' if st.session_state.side_effect_guidance_given else '⬜'} 이상반응/불편감 안내")
     st.write(f"{'✅' if st.session_state.intervention_cooperation_requested else '⬜'} 중재 참여 확인")
 
-with st.sidebar.expander("재사정 세부 항목", expanded=True):
+with st.sidebar.expander("재사정 세부 항목", expanded=False):
     st.write(f"{'✅' if st.session_state.pain_relief_checked else '⬜'} 통증 완화 확인")
     st.write(f"{'✅' if st.session_state.breathing_relief_checked else '⬜'} 호흡곤란 감소 확인")
     st.write(f"{'✅' if st.session_state.anxiety_relief_checked else '⬜'} 불안 감소 확인")
