@@ -489,8 +489,8 @@ def get_exam_patient_response_for_current_state(updates: List[str]) -> str:
     ):
         return "심전도랑 피검사가 왜 필요한지는 이제 조금 이해했어요… 제가 지금 검사에 협조하면 바로 진행할 수 있는 건가요?"
     if updates:
-        return "조금 이해됐어요… 그래도 제가 안심하고 협조할 수 있도록 빠진 부분을 한 번만 더 쉽게 설명해 주세요."
-    return "선생님… 지금 어떤 검사를 하는 건지 몰라서 더 불안해요. 왜 필요한 검사인지 쉽게 설명해 주시면 협조할게요…"
+        return "조금 이해됐어요… 그래도 심전도와 혈액검사가 각각 왜 필요한지 빠진 부분을 한 번만 더 쉽게 설명해 주세요."
+    return "선생님… 심전도와 피검사를 한다는 건 알겠는데, 각각 왜 필요한 검사인지 아직 잘 모르겠어요. 쉽게 설명해 주시면 협조할게요…"
 
 
 def get_interaction_patient_response_for_current_state(updates: List[str]) -> str:
@@ -892,12 +892,20 @@ def update_exam_explanation_state(text: str) -> List[str]:
         "혈액검사", "혈액 검사", "피검사", "채혈", "심근효소",
         "blood test", "blood work", "cardiac enzyme", "myocardial enzyme"
     ]
-    blood_explain_keywords = [
-        "트로포닌", "troponin", "ck-mb", "ckmb",
-        "심장근육 손상", "심근 손상", "심장 근육 손상",
-        "심근효소 수치", "효소 수치", "관련 수치", "손상 여부",
+    # 혈액검사는 "혈액검사/심근효소 검사가 필요합니다"처럼 검사명만 제시한 경우에는
+    # 설명 완료로 보지 않는다. 실제 설명으로 인정하려면 심장근육 손상 여부,
+    # 또는 Troponin/CK-MB 수치 확인이라는 목적이 함께 들어와야 한다.
+    blood_damage_purpose_keywords = [
+        "심장근육 손상", "심근 손상", "심장 근육 손상", "손상 여부",
         "heart muscle damage", "myocardial damage", "cardiac muscle damage",
-        "enzyme level", "damage to the heart muscle"
+        "damage to the heart muscle", "damage of the heart muscle"
+    ]
+    blood_marker_keywords = [
+        "트로포닌", "troponin", "ck-mb", "ckmb"
+    ]
+    blood_marker_purpose_keywords = [
+        "수치", "수치 확인", "확인", "측정", "검출",
+        "level", "levels", "check", "measure", "measurement", "detect", "determine"
     ]
 
     cooperation_keywords = [
@@ -915,14 +923,20 @@ def update_exam_explanation_state(text: str) -> List[str]:
         st.session_state.ecg_explained = True
         updates.append("심전도 검사 설명")
 
-    # 혈액검사는 검사명 또는 심근효소 표현 + 손상 여부/수치 설명이 들어와야 설명으로 인정한다.
-    if (
-        has_any(text, blood_name_keywords) and has_any(text, blood_explain_keywords)
-    ) or (
-        has_any(text, ["트로포닌", "troponin", "ck-mb", "ckmb", "심근효소", "cardiac enzyme", "myocardial enzyme"])
-        and has_any(text, ["심장근육 손상", "심근 손상", "손상 여부", "수치", "확인",
-                           "heart muscle damage", "damage", "level", "check", "determine"])
-    ):
+    blood_has_damage_purpose = (
+        has_any(text, blood_name_keywords)
+        and has_any(text, blood_damage_purpose_keywords)
+    )
+    blood_has_marker_purpose = (
+        has_any(text, blood_marker_keywords)
+        and has_any(text, blood_marker_purpose_keywords)
+    )
+
+    # 혈액검사는 검사명만 말한 경우가 아니라,
+    # 1) 심장근육 손상 여부를 보기 위한 검사라고 설명하거나
+    # 2) Troponin/CK-MB 수치 확인이라고 구체적으로 설명한 경우에만 완료 처리한다.
+    # 예: "심근효소 혈액검사가 필요합니다"는 설명 완료로 보지 않는다.
+    if blood_has_damage_purpose or blood_has_marker_purpose:
         st.session_state.blood_test_explained = True
         updates.append("혈액검사 설명")
 
