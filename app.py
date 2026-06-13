@@ -1133,12 +1133,18 @@ def classify_input(user_text: str) -> str:
     """
     text = user_text.lower().strip()
 
+    # 초기 접촉/환자확인 분류
+    # 주의: 기존의 "정확한 확인"은 검사 필요성 설명 문장
+    # (예: "정확한 확인을 위해 심전도와 혈액검사가 필요합니다")까지
+    # 환자확인 단계로 잘못 분류하여 김심근 등록번호 응답이 반복되는 문제가 있었다.
+    # 따라서 환자확인은 성함·등록번호·팔찌·본인확인처럼 환자확인 의도가 명확한 표현만 인정한다.
     intro_keywords = [
         "안녕하세요", "학생간호사", "간호학생", "담당 간호사", "담당 학생",
-        "제가 도와드리겠습니다", "제가 확인하겠습니다", "제가 사정하겠습니다",
+        "제가 도와드리겠습니다", "제가 사정하겠습니다",
         "성함이 어떻게 되세요", "이름이 어떻게 되세요", "환자분 성함", "김심근님 맞으세요",
         "등록번호", "등록 번호", "환자번호", "환자 번호", "팔찌", "환자 팔찌", "손목밴드",
-        "정확한 확인", "본인 확인", "환자 확인", "identification", "id band", "wristband"
+        "정확한 환자 확인", "정확한 본인 확인", "본인 확인", "환자 확인",
+        "identification", "patient identification", "id band", "wristband"
     ]
     if has_any(text, intro_keywords):
         return "intro"
@@ -1304,7 +1310,9 @@ def classify_input(user_text: str) -> str:
         "심장 문제 가능성", "심장 혈관 문제", "심혈관 문제", "심장 쪽 문제", 
         "심혈관질환", "심혈관",
         "수집한 자료를 종합", "자료를 종합", "증상과 위험요인", "위험요인",
-        "현재 증상으로 보아", "현재 증상으로 봤을 때", "심장 상태 확인이 필요"
+        "현재 증상으로 보아", "현재 증상으로 봤을 때", "심장 상태 확인이 필요",
+        "acute myocardial infarction", "myocardial infarction", "heart attack",
+        "possibility of ami", "suspected ami", "possible acute myocardial infarction"
     ]
     if has_any(text, ami_judgment_keywords):
         return "ami_judgment"
@@ -1337,13 +1345,13 @@ def classify_input(user_text: str) -> str:
     # 검사결과 확인(labs)이 아니라 혈액검사 설명(exam_explanation)으로 먼저 분류되도록 한다.
     exam_keywords = [
         "검사 이유", "검사 필요성", "왜 검사", "왜 해야",
-        "심전도", "ecg", "ekg", "12유도", "12-lead",
-        "혈액검사", "혈액 검사", "피검사", "채혈", "심근효소",
-        "검사", "정확한 상태 파악", "상태 확인", "정밀한 진단",
-        "관련 수치", "전기적 변화", "심장근육 손상", "심근 손상",
+        "심전도", "ecg", "ekg", "12유도", "12-lead", "electrocardiogram", "electrocardiography",
+        "혈액검사", "혈액 검사", "피검사", "채혈", "심근효소", "myocardial enzyme", "cardiac enzyme", "blood test", "blood work",
+        "검사", "정확한 상태 파악", "정확한 확인", "상태 확인", "정밀한 진단", "accurate confirmation",
+        "관련 수치", "전기적 변화", "심장근육 손상", "심근 손상", "heart muscle damage",
         "트로포닌", "troponin", "ck-mb", "ckmb",
         "알기 쉽게", "알아듣기 쉽게", "이해하기 쉽게",
-        "납득할 수 있도록", "협조", "협조 요청", "불안 완화"
+        "납득할 수 있도록", "협조", "협조 요청", "불안 완화", "cooperate", "consent", "proceed"
     ]
     if not st.session_state.exam_explained and has_any(text, exam_keywords):
         return "exam_explanation"
