@@ -418,6 +418,28 @@ def has_any(text: str, keywords: List[str]) -> bool:
 def count_true(values: List[bool]) -> int:
     return sum(1 for value in values if value)
 
+def get_unclear_patient_response() -> str:
+    """학습자 입력이 현재 단계의 인식 기준에 맞지 않을 때 환자 반응을 다양하게 제시한다.
+
+    같은 문장이 계속 반복되지 않도록 직전 응답은 제외하고 선택한다.
+    임상정보나 진행 조건은 바꾸지 않고, 환자의 불안·혼란 표현만 다양화한다.
+    """
+    unclear_responses = [
+        "네… 제가 잘 이해하지 못했어요. 다시 한 번 쉽게 말씀해 주실 수 있을까요?",
+        "죄송한데… 지금 너무 불안해서 잘 못 알아들었어요. 조금 더 쉽게 설명해 주세요.",
+        "선생님, 무슨 뜻인지 아직 잘 모르겠어요… 제가 지금 무엇을 해야 하는지 다시 말씀해 주실 수 있을까요?",
+    ]
+
+    last_response = st.session_state.get("last_unclear_patient_response")
+    candidate_responses = [
+        response for response in unclear_responses
+        if response != last_response
+    ]
+
+    selected_response = random.choice(candidate_responses or unclear_responses)
+    st.session_state.last_unclear_patient_response = selected_response
+    return selected_response
+
 
 def update_reassessment_state(text: str) -> List[str]:
     """중재 후 통증, 호흡곤란, 불안 완화 여부를 각각 누적 인식한다."""
