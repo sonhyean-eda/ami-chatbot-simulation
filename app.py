@@ -414,6 +414,61 @@ def mark_checklist(item: str) -> None:
         st.session_state.checklist[item] = True
 
 
+def build_text_progress_bar(progress_ratio: float, bar_length: int = 20) -> str:
+    """진행률을 문자형 막대(████░░░░)로 변환한다.
+
+    예: progress_ratio=0.42, bar_length=20이면
+    ████████░░░░░░░░░░░░ 형태로 표시된다.
+    """
+    safe_ratio = min(max(progress_ratio, 0.0), 1.0)
+    filled_blocks = round(safe_ratio * bar_length)
+    empty_blocks = bar_length - filled_blocks
+    return "█" * filled_blocks + "░" * empty_blocks
+
+
+def render_progress_indicator() -> None:
+    """체크리스트 완료 상태를 기반으로 진행률, 문자형 막대, 현재 단계를 사이드바에 표시한다."""
+    checklist = st.session_state.get("checklist", CHECKLIST_TEMPLATE.copy())
+
+    total_steps = len(checklist)
+    completed_steps = sum(1 for done in checklist.values() if done)
+    progress_ratio = completed_steps / total_steps if total_steps > 0 else 0
+    progress_percent = progress_ratio * 100
+    text_progress_bar = build_text_progress_bar(progress_ratio, bar_length=20)
+
+    current_step = None
+    for step, done in checklist.items():
+        if not done:
+            current_step = step
+            break
+
+    st.sidebar.markdown("### 📊 전체 진행률")
+
+    # 숫자 + 문자형 진행 막대
+    # 예: Progress: 5 / Step 12 completed
+    #     ████████░░░░░░░░░░░░ 42%
+    st.sidebar.markdown(
+        f"""
+        <div style="font-size:1.02rem; line-height:1.55; margin-bottom:8px;">
+            <div><strong>Progress: {completed_steps} / Step {total_steps} completed</strong></div>
+            <div style="font-family:monospace; font-size:1.05rem; letter-spacing:1px; white-space:nowrap;">
+                {text_progress_bar} {progress_percent:.0f}%
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Streamlit 기본 진행률 바도 함께 표시
+    st.sidebar.progress(progress_ratio)
+    st.sidebar.caption(f"{completed_steps} / {total_steps}단계 완료 ({progress_percent:.0f}%)")
+
+    if current_step:
+        st.sidebar.info(f"현재 진행 단계: {current_step}")
+    else:
+        st.sidebar.success("모든 단계를 완료했습니다.")
+
+
 def has_any(text: str, keywords: List[str]) -> bool:
     normalized_text = text.lower()
     return any(keyword.lower() in normalized_text for keyword in keywords)
@@ -1826,6 +1881,8 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 # ------------------------------------------------------------
 init_state()
 
+st.sidebar.markdown("---")
+render_progress_indicator()
 st.sidebar.markdown("---")
 
 st.sidebar.header("📋 진행 상태")
