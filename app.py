@@ -361,6 +361,10 @@ def init_state() -> None:
         # 디브리핑
         "show_debriefing": False,
         "debrief_submitted": False,
+
+        # 인식되지 않은 입력에 대한 환자 반응 순차 제시용
+        # 0 → 1 → 2 → 다시 0 순서로 환자 반응을 제시한다.
+        "unclear_response_index": 0,
     }
 
     for key, value in defaults.items():
@@ -418,6 +422,31 @@ def has_any(text: str, keywords: List[str]) -> bool:
 def count_true(values: List[bool]) -> int:
     return sum(1 for value in values if value)
 
+
+def get_unclear_patient_response() -> str:
+    """학습자 입력이 현재 단계의 인식 기준에 맞지 않을 때 환자 반응을 순서대로 제시한다.
+
+    예: 1번째 미인식 입력 → 1번 반응, 2번째 → 2번 반응,
+    3번째 → 3번 반응, 4번째 → 다시 1번 반응.
+    임상정보나 진행 조건은 바꾸지 않고, 환자의 불안·혼란 표현만 다양화한다.
+    """
+    unclear_responses = [
+        "네… 제가 잘 이해하지 못했어요. 다시 한 번 쉽게 설명해 주실 수 있을까요?",
+        "죄송한데… 지금 너무 불안해서 잘 못 알아들었어요. 조금 더 쉽게 설명해 주세요.",
+        "선생님, 무슨 뜻인지 아직 잘 모르겠어요… 제가 지금 무엇을 해야 하는지 다시 말씀해 주실 수 있을까요?",
+    ]
+
+    # 기존 세션이나 수정 전 파일을 실행한 경우에도 오류가 나지 않도록 기본값을 보정한다.
+    if "unclear_response_index" not in st.session_state:
+        st.session_state.unclear_response_index = 0
+
+    index = st.session_state.unclear_response_index
+    selected_response = unclear_responses[index % len(unclear_responses)]
+
+    # 다음 미인식 입력에서는 다음 문장이 나오도록 1 증가시킨다.
+    st.session_state.unclear_response_index = index + 1
+
+    return selected_response
 
 def update_reassessment_state(text: str) -> List[str]:
     """중재 후 통증, 호흡곤란, 불안 완화 여부를 각각 누적 인식한다."""
@@ -1787,7 +1816,7 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
         elif st.session_state.order_shown and not st.session_state.intervention_explained:
             responses.append(patient_message(get_intervention_patient_response_for_current_state([])))
         else:
-            responses.append(patient_message("네… 제가 잘 이해하지 못했어요. 다시 한 번 쉽게 말씀해 주실 수 있을까요?"))
+            responses.append(patient_message(get_unclear_patient_response()))
 
     return responses
 
