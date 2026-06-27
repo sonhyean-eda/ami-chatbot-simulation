@@ -1713,7 +1713,9 @@ def update_interaction_state(text: str) -> List[str]:
         "숨찬", "숨참", "호흡곤란", "호흡 곤란", "불안", "불안 정도",
         "검사결과", "검사 결과", "결과 토대로", "결과를 보면", "환자 상태", "상태 판단",
         "의미있는 자료", "의미 있는 자료", "st 상승", "트로포닌", "ck-mb",
-        "심근경색", "급성심근경색", "ami"
+        "심근경색", "급성심근경색", "급성 심근경색", "ami", "stemi",
+        "acute myocardial infarction", "myocardial infarction", "heart attack",
+        "suspected myocardial infarction", "suspected heart attack"
     ]
     goal_keywords = [
         "목표", "공동 목표", "함께 목표", "우선 목표", "치료 목표", "간호 목표",
@@ -1929,11 +1931,22 @@ def update_intervention_explanation_state(text: str) -> List[str]:
         st.session_state.intervention_purpose_explained = True
         updates.append("중재 목적 설명")
 
-    # 이상반응/불편감 안내는 '증상'과 '대처 행동'이 함께 있을 때만 인정한다.
-    # 단순히 "통증 완화" 또는 "동의해주세요"만 말했는데 콜벨 안내를 들은 것처럼 반응하는 오류를 방지한다.
-    side_effect_guidance_now = (
-        has_any(text, side_effect_symptom_keywords)
-        and has_any(text, side_effect_action_keywords)
+    # 이상반응/불편감 안내 인식
+    # 1) 원칙적으로는 증상 표현 + 대처 행동이 함께 있을 때 인정한다.
+    # 2) 단, 환자가 직전 흐름에서 “어지럽거나 불편하면 어떻게 해야 하나요?”라고 묻는 단계
+    #    즉 산소·약물·목적 설명은 끝났고 이상반응 안내만 남은 상태에서는,
+    #    학생이 “바로 말씀하세요/콜벨을 누르세요”처럼 대처 행동만 답해도 맥락상 인정한다.
+    #    이렇게 해야 같은 힌트가 반복 제시되지 않고 다음 동의 확인 단계로 진행된다.
+    side_effect_action_now = has_any(text, side_effect_action_keywords)
+    side_effect_symptom_now = has_any(text, side_effect_symptom_keywords)
+    awaiting_side_effect_guidance = (
+        st.session_state.oxygen_explained
+        and st.session_state.medication_explained
+        and st.session_state.intervention_purpose_explained
+        and not st.session_state.side_effect_guidance_given
+    )
+    side_effect_guidance_now = side_effect_action_now and (
+        side_effect_symptom_now or awaiting_side_effect_guidance
     )
     if side_effect_guidance_now and not st.session_state.side_effect_guidance_given:
         st.session_state.side_effect_guidance_given = True
@@ -2184,6 +2197,30 @@ def classify_input(user_text: str) -> str:
         and has_any(text, intervention_do_keywords)
     ):
         return "intervention"
+
+    # ------------------------------------------------------------
+    # 단계 역행 방지 잠금장치
+    # 이미 다음 단계로 진행한 뒤에는 학생이 이전 단계 표현을 다시 말하더라도
+    # 환자 반응이 이전 단계로 되돌아가지 않도록 현재 또는 다음 순서의 단계로 보낸다.
+    # 예: 검사결과 확인 후 "급성심근경색이 의심됩니다"라고 말하면
+    # 5단계 AMI 판단으로 돌아가지 않고 8단계 상호작용의 문제 확인으로 처리한다.
+    # ------------------------------------------------------------
+    if st.session_state.get("order_shown", False) and not st.session_state.get("intervention_done", False):
+        # 실제 중재 수행은 위의 intervention_do_keywords 조건을 만족할 때만 "intervention"으로 보낸다.
+        # 그 외의 모호한 입력은 10단계 중재 설명 맥락으로 유지하여 조기 수행을 방지한다.
+        return "intervention_explanation"
+
+    if st.session_state.get("interaction_completed", False) and not st.session_state.get("sbar_reported", False):
+        return "report_intro"
+
+    if st.session_state.get("labs_shown", False) and not st.session_state.get("interaction_completed", False):
+        return "interaction_goal_setting"
+
+    if st.session_state.get("exam_explained", False) and not st.session_state.get("labs_shown", False):
+        return "labs"
+
+    if st.session_state.get("ami_judged", False) and not st.session_state.get("exam_explained", False):
+        return "exam_explanation"
 
     # AMI 가능성 판단
     # 자연스러운 표현(예: "급성심근경색이 의심됩니다", "급성 심근경색 의심",
@@ -2572,14 +2609,29 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                     "네… 설명 들으니 조금 안심돼요. 불편하거나 어지러우면 바로 말씀드릴게요… 진행해 주세요."
                 ))
             else:
-                # 중재 설명 단계는 새 항목이 일부 인식되더라도 단계가 완료되지 않았다면
-                # '불완전한 시도'로 누적한다. 그래야 2회 연속 불완전 답변 후 힌트가 제시된다.
-                st.session_state.intervention_error_count = st.session_state.get("intervention_error_count", 0) + 1
+                # 중재 설명 힌트 제시 원칙
+                # - 같은 힌트가 매 입력마다 반복되지 않도록, 힌트 제시 후 카운트를 0으로 재설정한다.
+                # - 새 핵심 항목이 인식된 경우에는 기본적으로 힌트를 보류하고 다음 누락 항목을 환자가 질문하게 한다.
+                # - 다만 2회 이상 불완전하고 아직 누락 항목이 3개 이상이면 학습자가 크게 막힌 상황으로 보고
+                #   누락 항목 중심 힌트를 1회 제공한다.
+                previous_error_count = st.session_state.get("intervention_error_count", 0)
+                current_error_count = previous_error_count + 1
+                missing_count = len(get_intervention_missing_items())
+                show_hint_now = (
+                    current_error_count >= 2
+                    and (not updates or missing_count >= 3)
+                )
 
                 responses.append(patient_message(get_intervention_patient_response_for_current_state(updates)))
 
-                if st.session_state.intervention_error_count >= 2:
+                if show_hint_now:
                     responses.append(hint_message(get_intervention_hint_text()))
+                    st.session_state.intervention_error_count = 0
+                elif updates:
+                    # 새로 인식된 항목이 있으면 같은 힌트를 반복하지 않도록 카운트를 초기화한다.
+                    st.session_state.intervention_error_count = 0
+                else:
+                    st.session_state.intervention_error_count = current_error_count
     elif category == "intervention":
         if not st.session_state.order_shown:
             responses.append(system_message("아직 의사 처방이 제시되지 않았습니다. SBAR 보고 후 처방을 확인하세요."))
@@ -2656,10 +2708,13 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             if st.session_state.interaction_error_count >= 2:
                 responses.append(hint_message(get_interaction_hint_text()))
         elif st.session_state.order_shown and not st.session_state.intervention_explained:
-            st.session_state.intervention_error_count = st.session_state.get("intervention_error_count", 0) + 1
+            current_error_count = st.session_state.get("intervention_error_count", 0) + 1
             responses.append(patient_message(get_intervention_patient_response_for_current_state([])))
-            if st.session_state.intervention_error_count >= 2:
+            if current_error_count >= 2:
                 responses.append(hint_message(get_intervention_hint_text()))
+                st.session_state.intervention_error_count = 0
+            else:
+                st.session_state.intervention_error_count = current_error_count
         else:
             responses.append(patient_message(get_unclear_patient_response()))
 
