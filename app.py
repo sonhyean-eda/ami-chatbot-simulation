@@ -7,7 +7,7 @@ import streamlit as st
 from openai import OpenAI
 
 # ============================================================
-# AMI 챗봇 가상환자 프로그램
+# AMI 챗봇 가상환자 시뮬레이션
 # - 챗봇 역할: 급성심근경색 의심 환자 '김심근'
 # - 학습자 역할: 응급실 학생간호사
 # - 시스템 역할: 활력징후, 검사결과, 의사 처방 제시
@@ -22,7 +22,7 @@ from openai import OpenAI
 # 1. 페이지 설정
 # ------------------------------------------------------------
 st.set_page_config(
-    page_title="AMI 챗봇 가상환자 프로그램",
+    page_title="AMI 챗봇 가상환자 시뮬레이션",
     page_icon="🫀",
     layout="wide"
 )
@@ -36,7 +36,7 @@ client = OpenAI(api_key=api_key) if api_key else None
 # ------------------------------------------------------------
 # 3. 앱 제목, 프로그램 설명 토글 및 상황 제시
 # ------------------------------------------------------------
-st.title("🫀 급성심근경색(AMI) 챗봇 가상환자 프로그램")
+st.title("🫀 급성심근경색(AMI) 챗봇 가상환자 시뮬레이션")
 
 st.markdown("""
 <style>
@@ -85,7 +85,7 @@ button, .stButton button {
 show_program_description = st.sidebar.toggle("📘 프로그램 설명 보기", value=False)
 
 PROGRAM_DESCRIPTION = """
-이 프로그램은 **King의 목표달성이론을 적용한 AMI 챗봇 가상환자 프로토타입**입니다.
+이 프로그램은 **King의 목표달성이론을 적용한 AMI 챗봇 가상환자 시뮬레이션 프로토타입**입니다.
 
 **역할 구분**
 - **챗봇:** 급성심근경색이 의심되는 62세 남성 환자 *김심근* 역할만 수행합니다.
@@ -131,8 +131,8 @@ if show_program_description:
     st.markdown(PROGRAM_DESCRIPTION)
     st.info(PROGRESS_DESCRIPTION)
 else:
-    # 첫 화면은 기존처럼 시나리오 상황을 중심으로 제시
-    st.subheader("🚨 시나리오 상황")
+    # 첫 화면은 기존처럼 시뮬레이션 상황을 중심으로 제시
+    st.subheader("🚨 시뮬레이션 상황")
 
     st.markdown("""
     ### 👤 환자 기본정보
@@ -551,30 +551,48 @@ def has_any(text: str, keywords: List[str]) -> bool:
 
 
 def clean_dialogue_text(text: str) -> str:
-    """대화 내용에 실수로 섞인 HTML/CSS 태그를 제거하고 실제 대화문만 남긴다.
+    """대화 내용에 섞인 HTML/CSS 태그를 제거하고 실제 대화문만 남긴다.
 
-    일부 배포/수정 과정에서 학생 입력이 '<div style=...>대화</div>' 형태로
-    저장되면 화면에 HTML 코드가 그대로 보일 수 있다. 렌더링 전과 입력 저장 전에
-    한 번 정리하여 학생에게는 순수 대화문만 보이도록 한다.
+    Streamlit 화면에서 `<div style=...>`가 그대로 보이는 문제를 막기 위해
+    렌더링 전과 저장 전에 반복적으로 HTML escape를 해제하고 태그를 제거한다.
     """
     if text is None:
         return ""
 
-    cleaned = unescape(str(text))
+    cleaned = str(text)
 
-    # Markdown 코드블록/인라인 코드로 감싸진 경우 제거
-    cleaned = cleaned.replace("```html", "").replace("```", "")
-    cleaned = cleaned.replace("`", "")
+    # HTML이 &amp;lt;div&amp;gt;처럼 여러 번 escape되어 저장될 수 있어 반복 해제한다.
+    for _ in range(5):
+        unescaped = unescape(cleaned)
+        if unescaped == cleaned:
+            break
+        cleaned = unescaped
 
-    # HTML 태그 제거: <div style=...>, </div>, <br> 등
+    # Markdown 코드블록/인라인 코드 제거
+    cleaned = re.sub(r"```(?:html|python|text)?", "", cleaned, flags=re.IGNORECASE)
+    cleaned = cleaned.replace("```", "").replace("`", "")
+
+    # <br>은 줄바꿈으로 바꾸고, 나머지 HTML 태그는 제거한다.
     cleaned = re.sub(r"<br\s*/?>", "\n", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"</?div[^>]*>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"</?span[^>]*>", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"<[^>]+>", "", cleaned)
 
+    # 혹시 아직 HTML entity 형태 태그가 남아 있으면 제거한다.
+    cleaned = re.sub(r"&lt;br\s*/?&gt;", "\n", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"&lt;/?(?:div|span)[^&]*?&gt;", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"&lt;[^&]*?&gt;", "", cleaned, flags=re.IGNORECASE)
+
+    # 깨진 태그 조각이 남는 경우 제거한다. 예: div style="...">, /div>
+    cleaned = re.sub(r"/?div\s+style\s*=\s*['\"][^'\"]*['\"]\s*>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"/?span\s+style\s*=\s*['\"][^'\"]*['\"]\s*>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"/?div>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"/?span>", "", cleaned, flags=re.IGNORECASE)
+
     # 여러 공백 정리. 줄바꿈은 SBAR 등에서 필요할 수 있어 보존한다.
-    cleaned = "\n".join(line.strip() for line in cleaned.splitlines())
+    cleaned = "\n".join(line.strip() for line in cleaned.splitlines() if line.strip())
     cleaned = re.sub(r"[ \t]+", " ", cleaned).strip()
     return cleaned
-
 
 def is_exam_cooperation_response(text: str) -> bool:
     """검사 설명이 이미 완료된 맥락에서 짧은 진행 표현을 검사 참여 확인으로 인식한다.
@@ -1232,6 +1250,9 @@ def render_message(msg: Dict[str, str]) -> None:
     # 학습 안내는 표시하지 않음
     elif raw.startswith("[학습 안내]"):
         return
+
+    # 최종 출력 직전에도 한 번 더 정리하여 HTML/CSS 코드가 대화창에 노출되지 않게 한다.
+    body = clean_dialogue_text(body)
 
     text_color = "#111827"
     subtext_color = "#374151"
