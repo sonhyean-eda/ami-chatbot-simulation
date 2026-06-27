@@ -7,7 +7,7 @@ import streamlit as st
 from openai import OpenAI
 
 # ============================================================
-# AMI 챗봇 가상환자 시뮬레이션
+# AMI 챗봇 가상환자 프로그램
 # - 챗봇 역할: 급성심근경색 의심 환자 '김심근'
 # - 학습자 역할: 응급실 학생간호사
 # - 시스템 역할: 활력징후, 검사결과, 의사 처방 제시
@@ -22,7 +22,7 @@ from openai import OpenAI
 # 1. 페이지 설정
 # ------------------------------------------------------------
 st.set_page_config(
-    page_title="AMI 챗봇 가상환자 시뮬레이션",
+    page_title="AMI 챗봇 가상환자 프로그램",
     page_icon="🫀",
     layout="wide"
 )
@@ -36,7 +36,7 @@ client = OpenAI(api_key=api_key) if api_key else None
 # ------------------------------------------------------------
 # 3. 앱 제목, 프로그램 설명 토글 및 상황 제시
 # ------------------------------------------------------------
-st.title("🫀 급성심근경색(AMI) 챗봇 가상환자 시뮬레이션")
+st.title("🫀 급성심근경색(AMI) 챗봇 가상환자 프로그램")
 
 st.markdown("""
 <style>
@@ -85,7 +85,7 @@ button, .stButton button {
 show_program_description = st.sidebar.toggle("📘 프로그램 설명 보기", value=False)
 
 PROGRAM_DESCRIPTION = """
-이 프로그램은 **King의 목표달성이론을 적용한 AMI 챗봇 가상환자 시뮬레이션 프로토타입**입니다.
+이 프로그램은 **King의 목표달성이론을 적용한 AMI 챗봇 가상환자 프로토타입**입니다.
 
 **역할 구분**
 - **챗봇:** 급성심근경색이 의심되는 62세 남성 환자 *김심근* 역할만 수행합니다.
@@ -131,8 +131,8 @@ if show_program_description:
     st.markdown(PROGRAM_DESCRIPTION)
     st.info(PROGRESS_DESCRIPTION)
 else:
-    # 첫 화면은 기존처럼 시뮬레이션 상황을 중심으로 제시
-    st.subheader("🚨 시뮬레이션 상황")
+    # 첫 화면은 기존처럼 시나리오 상황을 중심으로 제시
+    st.subheader("🚨 시나리오 상황")
 
     st.markdown("""
     ### 👤 환자 기본정보
