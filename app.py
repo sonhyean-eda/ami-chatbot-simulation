@@ -1807,7 +1807,8 @@ def update_interaction_state(text: str) -> List[str]:
 def update_intervention_explanation_state(text: str) -> List[str]:
     """중재 설명 단계의 핵심 항목을 한 번의 입력에서 동시에 누적 인식한다.
 
-    v23 최종 수정
+    v26 최종 수정
+    - 힌트는 새 핵심 항목 없이 2회 연속 막힌 경우에만 제시한다.
     - 약물 설명은 단순히 "약이 통증을 줄인다"만으로 완료하지 않는다.
       NTG/니트로글리세린 등 흉통 완화 목적과 Aspirin/Plavix 등 혈전 예방 목적이 모두 확인될 때 완료한다.
     - 이상반응/불편감 안내는 증상 표현과 대처 행동이 함께 있을 때만 인정한다.
@@ -2609,29 +2610,27 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                     "네… 설명 들으니 조금 안심돼요. 불편하거나 어지러우면 바로 말씀드릴게요… 진행해 주세요."
                 ))
             else:
-                # 중재 설명 힌트 제시 원칙
-                # - 같은 힌트가 매 입력마다 반복되지 않도록, 힌트 제시 후 카운트를 0으로 재설정한다.
-                # - 새 핵심 항목이 인식된 경우에는 기본적으로 힌트를 보류하고 다음 누락 항목을 환자가 질문하게 한다.
-                # - 다만 2회 이상 불완전하고 아직 누락 항목이 3개 이상이면 학습자가 크게 막힌 상황으로 보고
-                #   누락 항목 중심 힌트를 1회 제공한다.
+                # 중재 설명 힌트 제시 원칙(v26)
+                # - 힌트는 “단계가 아직 미완료”라는 이유만으로 바로 제시하지 않는다.
+                # - 학생이 산소 설명, 약물 설명, 이상반응 안내처럼 새 핵심 항목을 하나라도 채우면
+                #   정상적으로 진행 중인 것으로 보고 힌트를 보류하며 카운트를 0으로 초기화한다.
+                # - 힌트는 같은 단계에서 새로 인정되는 핵심 항목 없이 2회 연속 막힌 경우에만 제시한다.
+                #   예: 환자가 “약은 어떤 약이고 왜 필요한가요?”라고 물었는데 학생이 계속 산소만 반복 설명하는 경우.
                 previous_error_count = st.session_state.get("intervention_error_count", 0)
-                current_error_count = previous_error_count + 1
-                missing_count = len(get_intervention_missing_items())
-                show_hint_now = (
-                    current_error_count >= 2
-                    and (not updates or missing_count >= 3)
-                )
 
                 responses.append(patient_message(get_intervention_patient_response_for_current_state(updates)))
 
-                if show_hint_now:
-                    responses.append(hint_message(get_intervention_hint_text()))
-                    st.session_state.intervention_error_count = 0
-                elif updates:
-                    # 새로 인식된 항목이 있으면 같은 힌트를 반복하지 않도록 카운트를 초기화한다.
+                if updates:
+                    # 새 핵심 항목이 인식되었으면 학습자가 진행 중이므로 힌트를 띄우지 않는다.
                     st.session_state.intervention_error_count = 0
                 else:
-                    st.session_state.intervention_error_count = current_error_count
+                    current_error_count = previous_error_count + 1
+                    if current_error_count >= 2:
+                        responses.append(hint_message(get_intervention_hint_text()))
+                        # 힌트가 매 입력마다 반복되지 않도록 제시 후 초기화한다.
+                        st.session_state.intervention_error_count = 0
+                    else:
+                        st.session_state.intervention_error_count = current_error_count
     elif category == "intervention":
         if not st.session_state.order_shown:
             responses.append(system_message("아직 의사 처방이 제시되지 않았습니다. SBAR 보고 후 처방을 확인하세요."))
