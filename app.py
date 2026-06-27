@@ -551,18 +551,19 @@ def has_any(text: str, keywords: List[str]) -> bool:
 
 
 def clean_dialogue_text(text: str) -> str:
-    """대화 내용에 섞인 HTML/CSS 태그를 제거하고 실제 대화문만 남긴다.
+    """대화 내용에 섞인 HTML/CSS/Markdown 코드 조각을 제거하고 실제 대화문만 남긴다.
 
-    Streamlit 화면에서 `<div style=...>`가 그대로 보이는 문제를 막기 위해
-    렌더링 전과 저장 전에 반복적으로 HTML escape를 해제하고 태그를 제거한다.
+    - <div style=...>대화문</div> 형태가 학생 대화창에 그대로 보이는 문제를 방지한다.
+    - &lt;div ...&gt;처럼 escape된 HTML도 반복 해제 후 제거한다.
+    - 실제 대화 내용만 남기고, SBAR처럼 줄바꿈이 필요한 문장은 줄바꿈을 보존한다.
     """
     if text is None:
         return ""
 
     cleaned = str(text)
 
-    # HTML이 &amp;lt;div&amp;gt;처럼 여러 번 escape되어 저장될 수 있어 반복 해제한다.
-    for _ in range(5):
+    # HTML entity가 여러 번 escape된 경우까지 반복 해제한다.
+    for _ in range(10):
         unescaped = unescape(cleaned)
         if unescaped == cleaned:
             break
@@ -572,27 +573,61 @@ def clean_dialogue_text(text: str) -> str:
     cleaned = re.sub(r"```(?:html|python|text)?", "", cleaned, flags=re.IGNORECASE)
     cleaned = cleaned.replace("```", "").replace("`", "")
 
-    # <br>은 줄바꿈으로 바꾸고, 나머지 HTML 태그는 제거한다.
+    # 흔한 Streamlit/HTML wrapper를 우선 제거한다.
     cleaned = re.sub(r"<br\s*/?>", "\n", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"</?div[^>]*>", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"</?span[^>]*>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"</?\s*(div|span|p|pre|code)[^>]*>", "", cleaned, flags=re.IGNORECASE)
+
+    # 아직 남은 모든 HTML 태그 제거
     cleaned = re.sub(r"<[^>]+>", "", cleaned)
 
-    # 혹시 아직 HTML entity 형태 태그가 남아 있으면 제거한다.
-    cleaned = re.sub(r"&lt;br\s*/?&gt;", "\n", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"&lt;/?(?:div|span)[^&]*?&gt;", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"&lt;[^&]*?&gt;", "", cleaned, flags=re.IGNORECASE)
+    # 혹시 남은 깨진 태그 조각 제거: div style="...">, /div>, span style="...">
+    cleaned = re.sub(r"/?\s*(div|span|p|pre|code)\s+[^>]*>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"/?\s*(div|span|p|pre|code)\s*>", "", cleaned, flags=re.IGNORECASE)
 
-    # 깨진 태그 조각이 남는 경우 제거한다. 예: div style="...">, /div>
-    cleaned = re.sub(r"/?div\s+style\s*=\s*['\"][^'\"]*['\"]\s*>", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"/?span\s+style\s*=\s*['\"][^'\"]*['\"]\s*>", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"/?div>", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"/?span>", "", cleaned, flags=re.IGNORECASE)
+    # 화면 캡처에서 보인 style 속성 조각이 텍스트로 남는 경우 제거
+    cleaned = re.sub(r"style\s*=\s*['\"][^'\"]*['\"]", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"color\s*:\s*#[0-9a-fA-F]{3,6}\s*;?", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"font-size\s*:\s*[^;>]+;?", "", cleaned, flags=re.IGNORECASE)
 
     # 여러 공백 정리. 줄바꿈은 SBAR 등에서 필요할 수 있어 보존한다.
-    cleaned = "\n".join(line.strip() for line in cleaned.splitlines() if line.strip())
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    cleaned = "\n".join(lines)
     cleaned = re.sub(r"[ \t]+", " ", cleaned).strip()
     return cleaned
+
+
+def sanitize_message_for_display(msg: Dict[str, str]) -> Dict[str, str]:
+    """이전 버전 세션에 남아 있는 HTML 대화 기록도 렌더링 전에 정리한다.
+
+    Streamlit 세션에 과거 메시지가 남아 있으면 새 코드로 교체해도 이전 HTML 조각이
+    다시 보일 수 있으므로, 화면 출력 직전 messages 전체를 한 번 정리한다.
+    """
+    role = msg.get("role", "assistant")
+    raw = str(msg.get("content", ""))
+
+    # 학생 입력은 무조건 실제 대화문만 남긴다.
+    if role == "user":
+        return {**msg, "content": clean_dialogue_text(raw)}
+
+    # 환자 메시지는 [환자]와 현재 단계 라벨은 보존하고 본문만 정리한다.
+    if raw.startswith("[환자]"):
+        body = raw.replace("[환자]", "", 1).strip()
+        if body.startswith("[현재 단계:"):
+            first_line, sep, remaining_body = body.partition("\n")
+            cleaned_body = clean_dialogue_text(remaining_body if sep else "")
+            if cleaned_body:
+                return {**msg, "content": f"[환자] {first_line}\n{cleaned_body}"}
+            return {**msg, "content": f"[환자] {first_line}"}
+        return {**msg, "content": f"[환자] {clean_dialogue_text(body)}"}
+
+    # 힌트/완료/시스템 메시지는 접두사는 보존하고 본문만 정리한다.
+    known_prefixes = ["[학습 힌트]", "[완료 안내]", "[학습 안내]", "[시스템]", "[활력징후]", "[검사결과]", "[의사 처방]"]
+    for prefix in known_prefixes:
+        if raw.startswith(prefix):
+            body = raw.replace(prefix, "", 1).strip()
+            return {**msg, "content": f"{prefix} {clean_dialogue_text(body)}"}
+
+    return {**msg, "content": clean_dialogue_text(raw)}
 
 def is_exam_cooperation_response(text: str) -> bool:
     """검사 설명이 이미 완료된 맥락에서 짧은 진행 표현을 검사 참여 확인으로 인식한다.
@@ -1257,16 +1292,19 @@ def render_message(msg: Dict[str, str]) -> None:
     text_color = "#111827"
     subtext_color = "#374151"
 
+    # 본문은 escape 후 줄바꿈만 <br>로 바꿔 표시한다. body 안의 HTML은 절대 실행/노출되지 않는다.
+    body_html = "<br>".join(escape(line) for line in body.splitlines()) if body else ""
+
     html = f"""
     <div style="background:{bg}; border-left:5px solid {border}; padding:10px 14px;
-                border-radius:10px; margin:6px 0; line-height:1.45; white-space:pre-wrap;
+                border-radius:10px; margin:6px 0; line-height:1.45;
                 color:{text_color}; box-shadow:0 1px 2px rgba(0,0,0,0.07);
                 font-size:1.45rem; width:100%;">
         <div style="font-weight:800; margin-bottom:4px; color:{text_color}; font-size:1.35rem;">
             {emoji} {escape(label)}
         </div>
         {stage_badge_html}
-        <div style="color:{subtext_color}; font-size:1.45rem;">{escape(body)}</div>
+        <div style="color:{subtext_color}; font-size:1.45rem;">{body_html}</div>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
@@ -2459,6 +2497,10 @@ with col2:
 if st.session_state.started:
     st.subheader("💬 시뮬레이션 대화")
     st.caption("챗봇 환자, 학생간호사, 시스템 임상자료, 완료 안내가 색상과 라벨로 구분됩니다.")
+
+    # 이전 버전에서 저장된 HTML/CSS 조각이 화면에 노출되지 않도록 렌더링 전 메시지 기록을 정리한다.
+    st.session_state.messages = [sanitize_message_for_display(m) for m in st.session_state.messages]
+
     for msg in st.session_state.messages:
         render_message(msg)
 
