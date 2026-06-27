@@ -7,7 +7,7 @@ import streamlit as st
 from openai import OpenAI
 
 # ============================================================
-# AMI 챗봇 가상환자 프로그램
+# AMI 챗봇 가상환자 시뮬레이션
 # - 챗봇 역할: 급성심근경색 의심 환자 '김심근'
 # - 학습자 역할: 응급실 학생간호사
 # - 시스템 역할: 활력징후, 검사결과, 의사 처방 제시
@@ -22,7 +22,7 @@ from openai import OpenAI
 # 1. 페이지 설정
 # ------------------------------------------------------------
 st.set_page_config(
-    page_title="AMI 챗봇 가상환자 프로그램",
+    page_title="AMI 챗봇 가상환자 시뮬레이션",
     page_icon="🫀",
     layout="wide"
 )
@@ -36,7 +36,7 @@ client = OpenAI(api_key=api_key) if api_key else None
 # ------------------------------------------------------------
 # 3. 앱 제목, 프로그램 설명 토글 및 상황 제시
 # ------------------------------------------------------------
-st.title("🫀 급성심근경색(AMI) 챗봇 가상환자 프로그램")
+st.title("🫀 급성심근경색(AMI) 챗봇 가상환자 시뮬레이션")
 
 st.markdown("""
 <style>
@@ -85,7 +85,7 @@ button, .stButton button {
 show_program_description = st.sidebar.toggle("📘 프로그램 설명 보기", value=False)
 
 PROGRAM_DESCRIPTION = """
-이 프로그램은 **King의 목표달성이론을 적용한 AMI 챗봇 가상환자 프로토타입**입니다.
+이 프로그램은 **King의 목표달성이론을 적용한 AMI 챗봇 가상환자 시뮬레이션 프로토타입**입니다.
 
 **역할 구분**
 - **챗봇:** 급성심근경색이 의심되는 62세 남성 환자 *김심근* 역할만 수행합니다.
@@ -131,8 +131,8 @@ if show_program_description:
     st.markdown(PROGRAM_DESCRIPTION)
     st.info(PROGRESS_DESCRIPTION)
 else:
-    # 첫 화면은 기존처럼 시나리오 상황을 중심으로 제시
-    st.subheader("🚨 시나리오 상황")
+    # 첫 화면은 기존처럼 시뮬레이션 상황을 중심으로 제시
+    st.subheader("🚨 시뮬레이션 상황")
 
     st.markdown("""
     ### 👤 환자 기본정보
@@ -2168,6 +2168,48 @@ def classify_input(user_text: str) -> str:
     return "general"
 
 
+
+
+def get_focused_pain_assessment_response(text: str) -> str:
+    """통증 사정 단계에서 학생이 물은 항목에만 초점을 맞춰 짧게 응답한다.
+
+    기존 OpenAI 자연화 응답은 환자의 불안 표현과 추가 질문을 덧붙이면서
+    "언제부터 아팠나요?" 같은 단일 질문에도 "큰일 난 건가요? 빨리 검사해 주세요"처럼
+    불필요한 문장이 포함될 수 있었다. 파일럿 테스트에서 학생들이 답변의 초점을
+    파악하기 어렵다는 피드백이 있어, 통증 사정 단계는 고정값 기반의 직접 응답으로 처리한다.
+    """
+    response_parts: List[str] = []
+
+    location_keywords = ["어디", "위치", "부위", "어디가", "어디서부터"]
+    quality_keywords = ["어떻게", "양상", "느낌", "쥐어짜", "압박", "조이", "답답", "찌르", "저리"]
+    onset_keywords = ["언제", "언제부터", "시작", "시작했", "지속", "얼마나", "몇 분", "몇시간", "몇 시간"]
+    score_keywords = ["몇 점", "몇점", "nrs", "점수", "강도", "1-10", "0점", "10점", "통증척도", "통증 척도"]
+    radiation_keywords = ["방사", "퍼지", "퍼지는", "턱", "어깨", "왼쪽 어깨", "왼팔", "팔", "등", "등 통증", "등으로", "등쪽", "뒤쪽"]
+    associated_keywords = ["숨", "숨참", "숨차", "숨 차", "호흡곤란", "식은땀", "식은 땀", "동반", "다른 증상", "불안", "무서"]
+    factor_keywords = ["악화요인", "악화 요인", "완화요인", "완화 요인", "악화", "완화", "움직이면", "움직일 때", "움직", "가만히", "쉬면", "쉬어도", "안정", "나아지", "심해지"]
+
+    if has_any(text, location_keywords):
+        response_parts.append("가슴 한가운데가 아파요.")
+    if has_any(text, quality_keywords):
+        response_parts.append("누가 꽉 쥐어짜는 듯한 압박감이에요.")
+    if has_any(text, onset_keywords):
+        response_parts.append("30분 전 운전 중에 갑자기 시작됐어요.")
+    if has_any(text, score_keywords):
+        response_parts.append("통증은 8점 정도예요.")
+    if has_any(text, radiation_keywords):
+        response_parts.append("턱, 왼쪽 어깨, 등까지 퍼져요.")
+    if has_any(text, associated_keywords):
+        response_parts.append("숨이 차고 식은땀이 나며 많이 불안해요.")
+    if has_any(text, factor_keywords):
+        response_parts.append("가만히 있어도 계속 아프고, 쉬어도 뚜렷하게 나아지지 않아요.")
+
+    if response_parts:
+        return " ".join(response_parts)
+
+    # 질문이 모호하지만 통증 사정 단계로 분류된 경우에는 핵심 증상만 짧게 말한다.
+    return "가슴 한가운데가 꽉 조이듯 아프고, 통증은 8점 정도예요."
+
+
 # ------------------------------------------------------------
 # 11. 응답 생성
 # ------------------------------------------------------------
@@ -2194,24 +2236,11 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 
         st.session_state.pain_symptom_done = True
         mark_checklist("2. 지각: 통증 및 동반 증상 사정")
-        if has_any(user_text, ["어디", "위치", "어디서부터"]):
-            fact = f"{PATIENT_INFO['pain_location']}이 아프고, {PATIENT_INFO['radiation']}까지 퍼진다."
-        elif has_any(user_text, ["방사", "퍼지", "턱", "어깨", "왼쪽 어깨", "등", "등 통증", "등으로", "등쪽", "뒤쪽"]):
-            fact = f"통증이 {PATIENT_INFO['radiation']}까지 퍼진다."
-        elif has_any(user_text, ["어떻게", "양상", "느낌", "쥐어짜", "압박"]):
-            fact = PATIENT_INFO["pain_quality"]
-        elif has_any(user_text, ["언제", "언제부터", "시작", "지속", "얼마나"]):
-            fact = PATIENT_INFO["onset"]
-        elif has_any(user_text, ["몇 점", "nrs", "점수", "강도", "1-10", "통증척도"]):
-            fact = PATIENT_INFO["pain_score_initial"]
-        elif has_any(user_text, ["악화요인", "악화 요인", "완화요인", "완화 요인", "악화", "완화", "움직이면", "움직일 때", "움직", "가만히", "쉬면", "쉬어도", "안정", "나아지", "심해지"]):
-            responses.append(patient_message("가만히 있어도 계속 아파요. 움직이거나 쉬어도 크게 나아지지는 않아요."))
-            return responses
-        elif has_any(user_text, ["숨", "숨참", "호흡곤란", "식은땀", "동반", "다른 증상", "불안"]):
-            fact = PATIENT_INFO["associated_symptoms"]
-        else:
-            fact = f"{PATIENT_INFO['chief_complaint']} 통증은 {PATIENT_INFO['pain_score_initial']} 정도이다."
-        responses.append(patient_message(naturalize_with_openai(user_text, fact, tone="극심한 흉통과 불안 상태")))
+
+        # 통증 사정 단계는 질문한 항목에만 답하도록 고정 응답을 사용한다.
+        # 예: "언제부터 아팠나요?" → "30분 전 운전 중에 갑자기 시작됐어요."
+        # 불필요한 "큰일 난 건가요/빨리 검사해 주세요" 표현은 제외한다.
+        responses.append(patient_message(get_focused_pain_assessment_response(user_text)))
 
     elif category == "vitals":
         st.session_state.vitals_shown = True
@@ -2541,7 +2570,7 @@ st.sidebar.write(f"{'✅' if reassessment_symptoms_all_checked() else '⬜'} 통
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("▶ 프로그램 시작"):
+    if st.button("▶ 시뮬레이션 시작"):
         reset_simulation()
         st.session_state.started = True
         st.session_state.messages.append(safe_message(patient_message(
