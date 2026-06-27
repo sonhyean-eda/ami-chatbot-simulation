@@ -366,6 +366,9 @@ def init_state() -> None:
         # 중재 설명 누적 인식
         "oxygen_explained": False,
         "medication_explained": False,
+        # 약물 설명은 흉통 완화 약물과 혈전 예방 약물 목적을 모두 설명했을 때 완료로 인정한다.
+        "medication_pain_relief_explained": False,
+        "medication_clot_prevention_explained": False,
         "intervention_purpose_explained": False,
         "side_effect_guidance_given": False,
         "intervention_cooperation_requested": False,
@@ -1079,22 +1082,29 @@ def get_intervention_missing_items() -> List[str]:
     missing = []
     if not st.session_state.oxygen_explained:
         missing.append("산소요법이 호흡곤란 완화와 심장 산소 공급에 도움이 된다는 설명")
+
     if not st.session_state.medication_explained:
-        missing.append("NTG, Aspirin, Plavix 등 약물이 흉통 완화 또는 혈전 예방에 도움이 된다는 설명")
+        medication_missing = []
+        if not st.session_state.get("medication_pain_relief_explained", False):
+            medication_missing.append("NTG/니트로글리세린 등 흉통 완화 약물의 목적")
+        if not st.session_state.get("medication_clot_prevention_explained", False):
+            medication_missing.append("Aspirin/Plavix 등 혈전 예방 약물의 목적")
+        if medication_missing:
+            missing.append("약물의 구체적 목적: " + ", ".join(medication_missing))
+        else:
+            missing.append("약물이 흉통 완화와 혈전 예방에 도움이 된다는 설명")
+
     if not st.session_state.intervention_purpose_explained:
         missing.append("중재가 통증 완화, 호흡곤란 감소, 심장 부담 감소에 어떤 도움이 되는지 설명")
+
     if not st.session_state.side_effect_guidance_given:
         missing.append("어지러움, 두통, 출혈, 통증 악화, 불편감 발생 시 바로 말씀하거나 콜벨로 간호사를 부르도록 안내")
-    if (
-        st.session_state.oxygen_explained
-        and st.session_state.medication_explained
-        and st.session_state.intervention_purpose_explained
-        and st.session_state.side_effect_guidance_given
-        and not st.session_state.intervention_cooperation_requested
-    ):
-        missing.append("설명한 중재를 진행해도 되는지 환자의 동의 또는 협조 확인")
-    return missing
 
+    # 동의/협조 확인은 설명이 충분히 이루어진 뒤 다시 확인해야 하므로, 아직 인정되지 않았으면 누락 항목으로 보여준다.
+    if not st.session_state.intervention_cooperation_requested:
+        missing.append("설명한 중재에 대한 환자의 이해와 참여 의사 또는 동의 확인")
+
+    return missing
 
 def get_intervention_hint_text() -> str:
     """중재 설명 단계에서 2회 이상 막혔을 때 제공할 표준화된 힌트."""
@@ -1107,17 +1117,24 @@ def get_intervention_hint_text() -> str:
         "중재 설명 단계에서 아직 빠진 핵심 항목이 있습니다. 정답 문장을 그대로 제시하지는 않으니, "
         "아래 항목을 참고해 자신의 말로 다시 설명해보세요.\n"
         f"{missing_text}\n"
-        "예: 산소는 숨쉬기와 심장 산소 공급을 돕고, 약물은 흉통 완화와 혈전 예방에 도움이 됩니다. "
+        "예: 산소는 숨쉬기와 심장 산소 공급을 돕고, NTG는 흉통 완화, Aspirin/Plavix는 혈전 예방에 도움이 됩니다. "
         "어지러움·두통·출혈·통증 악화·불편감이 있으면 바로 말씀하거나 콜벨을 누르도록 안내한 뒤, "
-        "진행해도 되는지 확인합니다."
+        "설명한 중재를 진행해도 되는지 확인합니다."
     )
 
 def get_intervention_patient_response_for_current_state(updates: List[str]) -> str:
     """중재 설명 단계에서 현재 누락된 항목에 맞춰 환자 반응을 반환한다."""
+    pain_med_done = st.session_state.get("medication_pain_relief_explained", False)
+    clot_med_done = st.session_state.get("medication_clot_prevention_explained", False)
+
     if not st.session_state.oxygen_explained:
         return "선생님… 산소는 왜 필요한 건가요? 숨쉬는 데 어떤 도움이 되는지 쉽게 설명해 주세요."
 
     if st.session_state.oxygen_explained and not st.session_state.medication_explained:
+        if pain_med_done and not clot_med_done:
+            return "통증 완화에 도움이 되는 약은 이해했어요… 그런데 Aspirin이나 Plavix 같은 약은 왜 필요한지도 설명해 주세요."
+        if clot_med_done and not pain_med_done:
+            return "혈전 예방 약은 이해했어요… 그런데 가슴 통증 완화를 위해 쓰는 약은 왜 필요한지도 설명해 주세요."
         return "산소가 숨쉬는 데 도움이 된다는 건 알겠어요… 그런데 약은 어떤 약이고 왜 필요한가요?"
 
     if st.session_state.medication_explained and not st.session_state.oxygen_explained:
@@ -1151,8 +1168,6 @@ def get_intervention_patient_response_for_current_state(updates: List[str]) -> s
         return "조금 이해됐어요… 제가 빠뜨린 부분 없이 안심하고 협조할 수 있도록 한 번만 더 쉽게 설명해 주세요."
 
     return "선생님… 지금 무엇을 하는 건지 조금 불안해요. 산소와 약이 왜 필요한지 쉽게 설명해 주시면 협조할게요…"
-
-
 
 def doctor_message(text: str) -> Dict[str, str]:
     return {"role": "assistant", "content": f"[의사 처방] {text}"}
@@ -1790,12 +1805,12 @@ def update_interaction_state(text: str) -> List[str]:
 def update_intervention_explanation_state(text: str) -> List[str]:
     """중재 설명 단계의 핵심 항목을 한 번의 입력에서 동시에 누적 인식한다.
 
-    변경 사항
-    - 학생이 한 문장 안에서 산소요법, 약물투여, 목적, 이상반응/불편감 안내, 참여 확인을 함께 말하면
-      가능한 항목을 모두 동시에 체크한다.
-    - "콜벨", "간호사 부르기", "바로 말씀해주세요", "동의하시나요" 등 실제 파일럿 발화를 반영한다.
-    - 단, 중재 참여 확인은 산소·약물·목적·이상반응 안내가 모두 충족된 뒤에만 인정하여
-      설명 없이 동의만 구하는 오류를 방지한다.
+    v23 최종 수정
+    - 약물 설명은 단순히 "약이 통증을 줄인다"만으로 완료하지 않는다.
+      NTG/니트로글리세린 등 흉통 완화 목적과 Aspirin/Plavix 등 혈전 예방 목적이 모두 확인될 때 완료한다.
+    - 이상반응/불편감 안내는 증상 표현과 대처 행동이 함께 있을 때만 인정한다.
+      예: "어지럽거나 두통, 출혈, 불편감이 있으면 바로 말씀하거나 콜벨을 눌러주세요."
+    - 동의/협조 확인은 산소, 약물, 목적, 이상반응/불편감 안내가 모두 충족된 뒤에만 인정한다.
     """
     updates: List[str] = []
 
@@ -1810,17 +1825,28 @@ def update_intervention_explanation_state(text: str) -> List[str]:
         "supply oxygen", "oxygen supply", "help the heart", "strain on the heart", "relieve", "ease breathing"
     ]
 
-    medication_name_keywords = [
-        "약", "약물", "투약", "니트로", "니트로글리세린", "ntg",
-        "아스피린", "aspirin", "플라빅스", "plavix", "클로피도그렐", "clopidogrel", "모르핀", "morphine",
-        "medicine", "medication", "drug", "nitroglycerin"
+    medication_general_keywords = [
+        "약", "약물", "투약", "medicine", "medication", "drug"
     ]
-    medication_explain_keywords = [
-        "통증", "흉통", "가슴 통증", "통증 완화", "통증 감소", "통증 조절",
-        "혈전", "혈전 예방", "혈전 생성", "혈관확장", "혈관 확장", "항혈소판", "출혈",
-        "줄이는", "줄이는 데", "도움", "예방", "녹여", "막힌 혈관", "혈류",
-        "chest pain", "pain", "relieve pain", "reduce pain", "blood clot", "clot",
-        "prevent clot", "reduce clot", "vasodilation", "widen blood vessel", "help reduce"
+    pain_med_name_keywords = [
+        "니트로", "니트로글리세린", "ntg", "nitroglycerin", "모르핀", "morphine"
+    ]
+    pain_med_purpose_keywords = [
+        "통증", "흉통", "가슴 통증", "가슴통증", "통증 완화", "통증 감소", "통증 조절",
+        "아픈 것", "아픈 증상", "chest pain", "pain", "relieve pain", "reduce pain", "pain relief"
+    ]
+
+    clot_med_name_keywords = [
+        "아스피린", "aspirin", "플라빅스", "plavix", "클로피도그렐", "clopidogrel",
+        "항혈소판", "항 혈소판"
+    ]
+    clot_med_purpose_keywords = [
+        "혈전", "피떡", "혈전 예방", "혈전 생성", "혈전 생성을", "혈전이 생기는",
+        "막힌 혈관", "혈관이 막", "혈류", "clot", "blood clot", "prevent clot",
+        "reduce clot", "antiplatelet"
+    ]
+    prevention_action_keywords = [
+        "예방", "막", "줄", "줄이", "감소", "방지", "도움", "prevent", "reduce", "decrease", "help"
     ]
 
     purpose_keywords = [
@@ -1830,15 +1856,17 @@ def update_intervention_explanation_state(text: str) -> List[str]:
         "strain on the heart", "blood clot"
     ]
 
-    side_effect_keywords = [
+    side_effect_symptom_keywords = [
         "어지럽", "어지러움", "두통", "출혈", "멍", "구토", "불편", "불편감", "이상", "부작용",
-        "통증 악화", "호흡곤란", "숨이 더 차", "숨 더 차", "말씀", "알려", "호출벨",
-        "콜벨", "콜밸", "벨", "호출", "간호사 부르", "간호사를 부르", "저희를 부르",
-        "불러주세요", "불러 주세요", "눌러주세요", "눌러 주세요", "눌러서", "바로 부르",
-        "바로 말", "바로 말씀", "바로 알려", "즉시 말씀", "불편하면", "불편하면 말씀",
-        "이상하면", "증상이 있으면", "증상 있으면",
-        "dizzy", "dizziness", "headache", "uncomfortable", "discomfort", "side effect",
-        "worsening pain", "difficulty breathing", "tell me", "let me know", "notify", "right away"
+        "통증 악화", "통증이 심", "호흡곤란", "숨이 더 차", "숨 더 차",
+        "dizzy", "dizziness", "headache", "bleeding", "bruise", "uncomfortable",
+        "discomfort", "side effect", "worsening pain", "difficulty breathing"
+    ]
+    side_effect_action_keywords = [
+        "말씀", "알려", "호출벨", "콜벨", "콜밸", "벨", "호출", "간호사 부르", "간호사를 부르",
+        "저희를 부르", "불러주세요", "불러 주세요", "눌러주세요", "눌러 주세요", "눌러서",
+        "바로 부르", "바로 말", "바로 말씀", "바로 알려", "즉시 말씀",
+        "tell me", "let me know", "notify", "call bell", "call the nurse", "press the bell", "right away"
     ]
 
     cooperation_keywords = [
@@ -1852,27 +1880,62 @@ def update_intervention_explanation_state(text: str) -> List[str]:
     ]
 
     oxygen_explained_now = has_any(text, oxygen_name_keywords) and has_any(text, oxygen_explain_keywords)
-    medication_explained_now = has_any(text, medication_name_keywords) and has_any(text, medication_explain_keywords)
+
+    # 약물 설명은 두 축으로 나누어 누적 인식한다.
+    # 1) NTG/니트로글리세린 등 흉통 완화 목적
+    # 2) Aspirin/Plavix 등 혈전 예방 목적
+    pain_med_explained_now = (
+        has_any(text, pain_med_name_keywords)
+        and has_any(text, pain_med_purpose_keywords)
+    )
+    clot_med_explained_now = (
+        has_any(text, clot_med_name_keywords)
+        and has_any(text, clot_med_purpose_keywords)
+        and has_any(text, prevention_action_keywords)
+    )
 
     if oxygen_explained_now and not st.session_state.oxygen_explained:
         st.session_state.oxygen_explained = True
         updates.append("산소요법 설명")
 
+    if pain_med_explained_now and not st.session_state.get("medication_pain_relief_explained", False):
+        st.session_state.medication_pain_relief_explained = True
+
+    if clot_med_explained_now and not st.session_state.get("medication_clot_prevention_explained", False):
+        st.session_state.medication_clot_prevention_explained = True
+
+    medication_explained_now = (
+        st.session_state.get("medication_pain_relief_explained", False)
+        and st.session_state.get("medication_clot_prevention_explained", False)
+    )
+
     if medication_explained_now and not st.session_state.medication_explained:
         st.session_state.medication_explained = True
         updates.append("약물투여 설명")
 
-    # 목적 설명은 산소 또는 약물 설명과 함께 들어오거나, 이미 산소/약물 설명이 된 뒤 목적 표현이 들어오면 인정한다.
+    # 목적 설명은 산소 설명 또는 약물 설명/부분 설명과 함께 들어오거나,
+    # 이미 관련 설명이 된 뒤 목적 표현이 들어오면 인정한다.
     if (
-        (oxygen_explained_now or medication_explained_now or st.session_state.oxygen_explained or st.session_state.medication_explained)
+        (
+            oxygen_explained_now
+            or st.session_state.oxygen_explained
+            or pain_med_explained_now
+            or clot_med_explained_now
+            or st.session_state.medication_explained
+        )
         and has_any(text, purpose_keywords)
         and not st.session_state.intervention_purpose_explained
     ):
         st.session_state.intervention_purpose_explained = True
         updates.append("중재 목적 설명")
 
-    # 이상반응/불편감 안내는 순서와 무관하게 누적 저장한다.
-    if has_any(text, side_effect_keywords) and not st.session_state.side_effect_guidance_given:
+    # 이상반응/불편감 안내는 '증상'과 '대처 행동'이 함께 있을 때만 인정한다.
+    # 단순히 "통증 완화" 또는 "동의해주세요"만 말했는데 콜벨 안내를 들은 것처럼 반응하는 오류를 방지한다.
+    side_effect_guidance_now = (
+        has_any(text, side_effect_symptom_keywords)
+        and has_any(text, side_effect_action_keywords)
+    )
+    if side_effect_guidance_now and not st.session_state.side_effect_guidance_given:
         st.session_state.side_effect_guidance_given = True
         updates.append("이상반응/불편감 안내")
 
@@ -2509,10 +2572,9 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                     "네… 설명 들으니 조금 안심돼요. 불편하거나 어지러우면 바로 말씀드릴게요… 진행해 주세요."
                 ))
             else:
-                if updates:
-                    st.session_state.intervention_error_count = 0
-                else:
-                    st.session_state.intervention_error_count = st.session_state.get("intervention_error_count", 0) + 1
+                # 중재 설명 단계는 새 항목이 일부 인식되더라도 단계가 완료되지 않았다면
+                # '불완전한 시도'로 누적한다. 그래야 2회 연속 불완전 답변 후 힌트가 제시된다.
+                st.session_state.intervention_error_count = st.session_state.get("intervention_error_count", 0) + 1
 
                 responses.append(patient_message(get_intervention_patient_response_for_current_state(updates)))
 
