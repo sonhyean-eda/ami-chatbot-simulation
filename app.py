@@ -1125,7 +1125,7 @@ def get_interaction_patient_response_for_current_state(updates: List[str]) -> st
         return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 지금 제 상태에서 무엇이 가장 문제인지 쉽게 설명해 주세요…"
 
     if st.session_state.problem_identified and not st.session_state.goal_set:
-        return "네… 제일 힘든 건 가슴 통증이랑 숨찬 거예요. 통증 완화, 호흡곤란 감소, 불안 감소처럼 지금 치료 목표를 구체적으로 설명해 주세요."
+        return "네… 제일 힘든 건 가슴 통증이랑 숨찬 거예요. 그럼 지금 치료 목표는 무엇인지 설명해 주세요."
 
     if st.session_state.problem_identified and st.session_state.goal_set and not st.session_state.means_explained:
         return "제 문제와 목표는 이해했어요… 그 목표를 위해 앞으로 어떤 치료나 간호를 받게 되는지 알려주세요."
