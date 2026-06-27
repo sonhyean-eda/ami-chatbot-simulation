@@ -434,7 +434,10 @@ def get_step_label_for_category(category: str) -> str:
         "pain_assessment": "2단계 통증·동반증상 사정",
         "vitals": "3단계 활력징후 확인",
         "history_risk": "4단계 병력·위험요인 사정",
+        "history": "4단계 병력·위험요인 사정",
+        "family_history": "4단계 병력·위험요인 사정",
         "judgment": "5단계 AMI 판단·검사 필요성",
+        "ami_judgment": "5단계 AMI 판단·검사 필요성",
         "exam_explanation": "6단계 검사 설명·참여 확인",
         "labs": "7단계 검사결과 확인",
         "interaction_goal_setting": "8단계 문제·목표·방법 공유",
@@ -2170,6 +2173,66 @@ def classify_input(user_text: str) -> str:
 
 
 
+def get_focused_history_risk_response(text: str) -> str:
+    """병력·위험요인 사정 단계에서 학생이 물은 항목에만 초점을 맞춰 짧게 응답한다.
+
+    OpenAI 자연화 응답을 사용하면 가족력 질문에도 현재 흉통·호흡곤란·검사 요청이 덧붙어
+    학생이 질문의 초점을 파악하기 어려웠다. 따라서 병력·위험요인 단계는 고정값 기반으로
+    질문한 항목에만 답한다.
+    """
+    response_parts: List[str] = []
+
+    hypertension_keywords = ["고혈압", "혈압", "기저질환", "과거력", "병력", "진단", "질환"]
+    medication_keywords = ["약", "약물", "복용", "복용약", "혈압약", "드시", "먹고", "먹는"]
+    family_keywords = ["가족력", "가족", "아버지", "부친", "어머니", "모친", "심장마비", "심장질환"]
+    smoking_keywords = ["담배", "흡연", "흡연력", "smoking", "smoke"]
+    anticoagulant_keywords = ["항응고", "항응고제", "항혈소판", "항혈소판제", "와파린", "헤파린", "아스피린", "플라빅스", "피 묽게", "피를 묽게"]
+    bleeding_keywords = ["출혈", "출혈성", "출혈 질환", "출혈질환", "피가 잘", "지혈", "혈우병"]
+    allergy_keywords = ["알레르기", "알러지", "allergy"]
+    diabetes_keywords = ["당뇨", "diabetes"]
+    hyperlipidemia_keywords = ["고지혈", "고지혈증", "이상지질", "콜레스테롤"]
+    alcohol_keywords = ["음주", "술", "alcohol"]
+    diet_keywords = ["식습관", "식사", "식이", "생활습관"]
+    exercise_keywords = ["운동"]
+
+    # 여러 항목을 한 번에 물으면, 물은 항목만 순서대로 답한다.
+    if has_any(text, hypertension_keywords):
+        response_parts.append("고혈압이 있고, 6년 전에 진단받았어요.")
+    if has_any(text, medication_keywords):
+        response_parts.append("혈압약은 먹고 있는데 약 이름은 잘 몰라요.")
+    if has_any(text, family_keywords):
+        response_parts.append("아버지가 심장마비로 돌아가셨어요.")
+    if has_any(text, smoking_keywords):
+        response_parts.append("담배는 20년 전부터 하루 한 갑 정도 피웠어요.")
+    if has_any(text, anticoagulant_keywords):
+        response_parts.append("최근 항응고제나 항혈소판제는 복용하지 않았어요.")
+    if has_any(text, bleeding_keywords):
+        response_parts.append("출혈성 질환은 없어요.")
+    if has_any(text, allergy_keywords):
+        response_parts.append("알레르기는 없어요.")
+    if has_any(text, diabetes_keywords):
+        response_parts.append("당뇨 진단 여부는 잘 모르겠어요.")
+    if has_any(text, hyperlipidemia_keywords):
+        response_parts.append("고지혈증 진단 여부는 잘 모르겠어요.")
+    if has_any(text, alcohol_keywords):
+        response_parts.append("음주는 특별히 말씀드릴 만한 건 잘 모르겠어요.")
+    if has_any(text, diet_keywords):
+        response_parts.append("식사는 불규칙한 편이에요.")
+    if has_any(text, exercise_keywords):
+        response_parts.append("운동은 거의 하지 않아요.")
+
+    if response_parts:
+        # 중복 문장 제거 후 반환
+        unique_parts: List[str] = []
+        for part in response_parts:
+            if part not in unique_parts:
+                unique_parts.append(part)
+        return " ".join(unique_parts)
+
+    # 질문이 넓은 병력 질문인 경우에도 현재 증상이나 검사 요구를 덧붙이지 않는다.
+    return "고혈압이 있고 혈압약은 먹고 있는데 약 이름은 잘 몰라요. 아버지가 심장마비로 돌아가셨어요."
+
+
 def get_focused_pain_assessment_response(text: str) -> str:
     """통증 사정 단계에서 학생이 물은 항목에만 초점을 맞춰 짧게 응답한다.
 
@@ -2259,39 +2322,15 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
     elif category == "family_history":
         st.session_state.history_risk_done = True
         mark_checklist("4. 지각: 병력 및 위험요인 사정")
-        responses.append(patient_message(naturalize_with_openai(user_text, PATIENT_INFO["family_history"], tone="불안하지만 질문에는 답하는 상태")))
+        # 가족력 질문에는 현재 증상이나 검사 요청을 덧붙이지 않고, 질문한 내용에만 답한다.
+        responses.append(patient_message(get_focused_history_risk_response(user_text)))
 
     elif category == "history":
         st.session_state.history_risk_done = True
         mark_checklist("4. 지각: 병력 및 위험요인 사정")
-        if "알레르기" in user_text:
-            fact = PATIENT_INFO["allergy"]
-        elif has_any(user_text, ["항응고", "항응고제", "항혈소판", "항혈소판제", "와파린", "warfarin", "헤파린", "heparin", "아스피린", "aspirin", "플라빅스", "plavix", "클로피도그렐", "clopidogrel", "피 묽게", "피를 묽게", "피 묽어지는"]):
-            fact = PATIENT_INFO["anticoagulant_antiplatelet"]
-        elif has_any(user_text, ["출혈성", "출혈 질환", "출혈질환", "출혈", "피가 잘", "지혈", "혈우병", "bleeding"]):
-            fact = PATIENT_INFO["bleeding_disorder"]
-        elif has_any(user_text, ["약", "복용", "복용약물", "혈압약"]):
-            fact = PATIENT_INFO["medication"]
-        elif has_any(user_text, ["담배", "흡연"]):
-            fact = PATIENT_INFO["smoking"]
-        elif has_any(user_text, ["음주", "술"]):
-            fact = PATIENT_INFO["alcohol"]
-        elif has_any(user_text, ["식습관", "생활습관"]):
-            fact = PATIENT_INFO["diet"]
-        elif has_any(user_text, ["운동"]):
-            fact = PATIENT_INFO["exercise"]
-        elif has_any(user_text, ["당뇨"]):
-            fact = PATIENT_INFO["diabetes"]
-        elif has_any(user_text, ["고지혈증"]):
-            fact = PATIENT_INFO["hyperlipidemia"]
-        else:
-            fact = f"{PATIENT_INFO['history']}. {PATIENT_INFO['medication']}"
-
-        # 항응고제/항혈소판제 및 출혈성 질환 여부는 전문가 평가표의 고정 응답으로 유지한다.
-        if fact in [PATIENT_INFO["anticoagulant_antiplatelet"], PATIENT_INFO["bleeding_disorder"]]:
-            responses.append(patient_message(fact))
-        else:
-            responses.append(patient_message(naturalize_with_openai(user_text, fact, tone="불안하지만 질문에는 답하는 상태")))
+        # 병력·위험요인 질문에는 질문한 항목만 고정값으로 답한다.
+        # OpenAI 자연화 응답을 사용하지 않아 불필요한 흉통/호흡곤란/검사 요청 문장이 덧붙지 않는다.
+        responses.append(patient_message(get_focused_history_risk_response(user_text)))
 
     elif category == "ami_judgment":
         st.session_state.ami_judged = True
