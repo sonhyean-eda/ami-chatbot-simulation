@@ -2497,7 +2497,7 @@ st.sidebar.write(f"{'✅' if reassessment_symptoms_all_checked() else '⬜'} 통
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("▶ 시뮬레이션 시작"):
+    if st.button("▶ 프로그램 시작"):
         reset_simulation()
         st.session_state.started = True
         st.session_state.messages.append(safe_message(patient_message(
