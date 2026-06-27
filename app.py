@@ -1,5 +1,6 @@
 import os
-from html import escape
+from html import escape, unescape
+import re
 from typing import Dict, List, Tuple
 
 import streamlit as st
@@ -549,6 +550,32 @@ def has_any(text: str, keywords: List[str]) -> bool:
     return any(keyword.lower() in normalized_text for keyword in keywords)
 
 
+def clean_dialogue_text(text: str) -> str:
+    """대화 내용에 실수로 섞인 HTML/CSS 태그를 제거하고 실제 대화문만 남긴다.
+
+    일부 배포/수정 과정에서 학생 입력이 '<div style=...>대화</div>' 형태로
+    저장되면 화면에 HTML 코드가 그대로 보일 수 있다. 렌더링 전과 입력 저장 전에
+    한 번 정리하여 학생에게는 순수 대화문만 보이도록 한다.
+    """
+    if text is None:
+        return ""
+
+    cleaned = unescape(str(text))
+
+    # Markdown 코드블록/인라인 코드로 감싸진 경우 제거
+    cleaned = cleaned.replace("```html", "").replace("```", "")
+    cleaned = cleaned.replace("`", "")
+
+    # HTML 태그 제거: <div style=...>, </div>, <br> 등
+    cleaned = re.sub(r"<br\s*/?>", "\n", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"<[^>]+>", "", cleaned)
+
+    # 여러 공백 정리. 줄바꿈은 SBAR 등에서 필요할 수 있어 보존한다.
+    cleaned = "\n".join(line.strip() for line in cleaned.splitlines())
+    cleaned = re.sub(r"[ \t]+", " ", cleaned).strip()
+    return cleaned
+
+
 def is_exam_cooperation_response(text: str) -> bool:
     """검사 설명이 이미 완료된 맥락에서 짧은 진행 표현을 검사 참여 확인으로 인식한다.
 
@@ -1096,7 +1123,7 @@ def render_message(msg: Dict[str, str]) -> None:
     # 학습자 입력
     if role == "user":
         label = "학생간호사"
-        body = raw
+        body = clean_dialogue_text(raw)
         bg = "#E8F1FF"
         border = "#4C8DFF"
         emoji = "🧑‍⚕️"
@@ -1108,13 +1135,14 @@ def render_message(msg: Dict[str, str]) -> None:
         if body.startswith("[현재 단계:"):
             first_line, _, remaining_body = body.partition("\n")
             step_label = first_line.replace("[현재 단계:", "", 1).rstrip("]").strip()
-            body = remaining_body.strip()
+            body = clean_dialogue_text(remaining_body.strip())
             stage_badge_html = (
                 f'<div style="display:inline-block; background:#FFF7ED; border:1px solid #FDBA74; '
                 f'color:#9A3412; border-radius:999px; padding:3px 10px; '
                 f'font-size:1.02rem; font-weight:800; margin:2px 0 8px 0;">'
                 f'📍 현재 단계: {escape(step_label)}</div>'
             )
+        body = clean_dialogue_text(body)
         bg = "#FFF4E6"
         border = "#F59F00"
         emoji = "🫀"
@@ -1865,7 +1893,7 @@ def classify_input(user_text: str) -> str:
         "이제 진행", "처치하겠습니다", "중재하겠습니다",
         "산소 투여", "산소를 투여", "산소 적용", "산소 연결",
         "산소요법 시행", "산소 요법 시행",
-        "비강캐뉼라", "비강 캐뉼라", "나잘캐뉼라", "나잘 캐뉼라", "ntg 투여", "니트로 투여", "니트로글리세린 투여",
+        "비강캐뉼라", "비강 캐뉼라", "ntg 투여", "니트로 투여", "니트로글리세린 투여",
         "아스피린 투여", "플라빅스 투여", "plavix", "모르핀", "morphine", "약물을 투여", "약물 투여", "12-lead", "12유도",
         "심전도 재확인", "ecg re-check", "ekg re-check", "ecg monitoring", "모니터링",
         "cag preparation", "cag 준비", "관상동맥조영술 준비", "관상동맥 조영술 준비"
@@ -2451,8 +2479,10 @@ if st.session_state.started and not st.session_state.ended:
 
     user_input = st.chat_input("환자에게 질문하거나 간호수행 내용을 입력하세요.")
     if user_input:
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        for answer in get_response(user_input):
+        # 화면에 HTML/CSS 코드가 그대로 보이지 않도록 입력 저장 전에 대화문만 정리한다.
+        cleaned_user_input = clean_dialogue_text(user_input)
+        st.session_state.messages.append({"role": "user", "content": cleaned_user_input})
+        for answer in get_response(cleaned_user_input):
             st.session_state.messages.append(answer)
         st.rerun()
 
