@@ -84,7 +84,7 @@ button, .stButton button {
 show_program_description = st.sidebar.toggle("📘 프로그램 설명 보기", value=False)
 
 PROGRAM_DESCRIPTION = """
-이 프로그램은 **King의 목표달성이론을 적용한 AMI 챗봇 가상환자 시뮬레이션 프로토타입**입니다.
+이 프로그램은 **King의 목표달성이론을 적용한 AMI 챗봇 가상환자 프로토타입**입니다.
 
 **역할 구분**
 - **챗봇:** 급성심근경색이 의심되는 62세 남성 환자 *김심근* 역할만 수행합니다.
