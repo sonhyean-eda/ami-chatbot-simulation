@@ -551,11 +551,12 @@ def has_any(text: str, keywords: List[str]) -> bool:
 
 
 def clean_dialogue_text(text: str) -> str:
-    """대화 내용에 섞인 HTML/CSS/Markdown 코드 조각을 제거하고 실제 대화문만 남긴다.
+    """대화창에 섞인 HTML/CSS/코드 조각을 강제로 제거하고 실제 대화문만 남긴다.
 
-    - <div style=...>대화문</div> 형태가 학생 대화창에 그대로 보이는 문제를 방지한다.
-    - &lt;div ...&gt;처럼 escape된 HTML도 반복 해제 후 제거한다.
-    - 실제 대화 내용만 남기고, SBAR처럼 줄바꿈이 필요한 문장은 줄바꿈을 보존한다.
+    v14 핵심 수정
+    - 이전 버전의 HTML 카드 렌더링에서 저장된 <div style=...> 조각을 모든 메시지 유형에서 제거한다.
+    - 정상 태그(<div>...</div>), escape 태그(&lt;div&gt;), 깨진 태그(div style=...>)를 모두 처리한다.
+    - Streamlit/PDF 변환 과정에서 섞일 수 있는 특수 문자(, )도 제거한다.
     """
     if text is None:
         return ""
@@ -563,71 +564,102 @@ def clean_dialogue_text(text: str) -> str:
     cleaned = str(text)
 
     # HTML entity가 여러 번 escape된 경우까지 반복 해제한다.
-    for _ in range(10):
+    for _ in range(50):
         unescaped = unescape(cleaned)
         if unescaped == cleaned:
             break
         cleaned = unescaped
 
-    # Markdown 코드블록/인라인 코드 제거
-    cleaned = re.sub(r"```(?:html|python|text)?", "", cleaned, flags=re.IGNORECASE)
+    # PDF/브라우저 캡처에서 섞일 수 있는 특수 제어 문자 제거
+    cleaned = cleaned.replace("", "").replace("", "")
+
+    # 코드블록/인라인 코드 표시 제거
+    cleaned = re.sub(r"```(?:html|python|text|markdown|css)?", "", cleaned, flags=re.IGNORECASE)
     cleaned = cleaned.replace("```", "").replace("`", "")
 
-    # 흔한 Streamlit/HTML wrapper를 우선 제거한다.
-    cleaned = re.sub(r"<br\s*/?>", "\n", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"</?\s*(div|span|p|pre|code)[^>]*>", "", cleaned, flags=re.IGNORECASE)
+    # style/script 블록 전체 제거
+    cleaned = re.sub(r"(?is)<\s*style[^>]*>.*?<\s*/\s*style\s*>", "", cleaned)
+    cleaned = re.sub(r"(?is)<\s*script[^>]*>.*?<\s*/\s*script\s*>", "", cleaned)
 
-    # 아직 남은 모든 HTML 태그 제거
-    cleaned = re.sub(r"<[^>]+>", "", cleaned)
+    # br 태그는 줄바꿈으로 변환
+    cleaned = re.sub(r"(?is)<\s*br\s*/?\s*>", "\n", cleaned)
 
-    # 혹시 남은 깨진 태그 조각 제거: div style="...">, /div>, span style="...">
-    cleaned = re.sub(r"/?\s*(div|span|p|pre|code)\s+[^>]*>", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"/?\s*(div|span|p|pre|code)\s*>", "", cleaned, flags=re.IGNORECASE)
+    # 핵심: 정상 HTML 태그를 모두 제거하되 내부 텍스트는 보존한다.
+    # 예: <div style="...">안녕하세요</div> -> 안녕하세요
+    cleaned = re.sub(r"(?is)<\s*/?\s*[a-zA-Z][^>]*>", "", cleaned)
 
-    # 화면 캡처에서 보인 style 속성 조각이 텍스트로 남는 경우 제거
-    cleaned = re.sub(r"style\s*=\s*['\"][^'\"]*['\"]", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"color\s*:\s*#[0-9a-fA-F]{3,6}\s*;?", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"font-size\s*:\s*[^;>]+;?", "", cleaned, flags=re.IGNORECASE)
+    # 깨진 시작 태그 제거: div style="..."> 또는 div style="..." 형태
+    cleaned = re.sub(r"(?is)\b(div|span|p|pre|code|section|article)\b\s+[^\n<>]*>", "", cleaned)
+    cleaned = re.sub(r"(?is)\b(div|span|p|pre|code|section|article)\b\s+[^\n<>]*(?=\n|$)", "", cleaned)
 
-    # 여러 공백 정리. 줄바꿈은 SBAR 등에서 필요할 수 있어 보존한다.
-    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    # 깨진 닫는 태그 제거: /div>, /span>, </div 조각 등
+    cleaned = re.sub(r"(?is)</?\s*(div|span|p|pre|code|section|article)\s*>?", "", cleaned)
+    cleaned = re.sub(r"(?is)/\s*(div|span|p|pre|code|section|article)\s*>?", "", cleaned)
+
+    # HTML 속성 조각 제거
+    cleaned = re.sub(r"(?is)\b(style|class|id|data-testid|aria-label)\s*=\s*(['\"]).*?\2", "", cleaned)
+    cleaned = re.sub(r"(?is)\b(style|class|id|data-testid|aria-label)\s*=\s*[^\s>]+", "", cleaned)
+
+    # CSS 속성 조각 제거
+    css_props = [
+        "background", "background-color", "border", "border-left", "border-radius",
+        "padding", "margin", "line-height", "white-space", "color", "box-shadow",
+        "font-size", "font-weight", "width", "display", "gap", "align-items",
+        "letter-spacing", "font-family", "height", "min-height", "max-width"
+    ]
+    cleaned = re.sub(
+        r"(?is)(" + "|".join(re.escape(p) for p in css_props) + r")\s*:\s*[^;{}\n]+;?",
+        "",
+        cleaned,
+    )
+
+    # 남은 꺾쇠 조각 제거
+    cleaned = re.sub(r"[<>]", "", cleaned)
+    cleaned = cleaned.replace("&nbsp;", " ")
+
+    # 줄 단위 정리: 태그/속성만 남은 줄 제거
+    lines = []
+    for line in cleaned.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if re.fullmatch(r"[/{},;\s]+", line):
+            continue
+        if re.fullmatch(r"(?is)(style|class|id|data-testid|aria-label)\s*=.*", line):
+            continue
+        if re.fullmatch(r"(?is)/?\s*(div|span|p|pre|code|style|script|section|article)\s*", line):
+            continue
+        lines.append(line)
+
     cleaned = "\n".join(lines)
     cleaned = re.sub(r"[ \t]+", " ", cleaned).strip()
     return cleaned
 
 
 def sanitize_message_for_display(msg: Dict[str, str]) -> Dict[str, str]:
-    """이전 버전 세션에 남아 있는 HTML 대화 기록도 렌더링 전에 정리한다.
+    """메시지를 저장/출력하기 전에 HTML/CSS 조각을 제거한다.
 
-    Streamlit 세션에 과거 메시지가 남아 있으면 새 코드로 교체해도 이전 HTML 조각이
-    다시 보일 수 있으므로, 화면 출력 직전 messages 전체를 한 번 정리한다.
+    prefix는 유지하되, 본문은 저장 시점과 출력 시점 모두에서 정리한다.
     """
     role = msg.get("role", "assistant")
-    raw = str(msg.get("content", ""))
+    content = str(msg.get("content", ""))
 
-    # 학생 입력은 무조건 실제 대화문만 남긴다.
-    if role == "user":
-        return {**msg, "content": clean_dialogue_text(raw)}
+    prefixes = [
+        "[환자]", "[환자확인]", "[활력징후]", "[검사결과]", "[의사 처방]",
+        "[완료 안내]", "[시스템]", "[학습 힌트]", "[학습 안내]"
+    ]
+    for prefix in prefixes:
+        if content.startswith(prefix):
+            body = content.replace(prefix, "", 1).strip()
+            return {"role": role, "content": (prefix + " " + clean_dialogue_text(body)).strip()}
 
-    # 환자 메시지는 [환자]와 현재 단계 라벨은 보존하고 본문만 정리한다.
-    if raw.startswith("[환자]"):
-        body = raw.replace("[환자]", "", 1).strip()
-        if body.startswith("[현재 단계:"):
-            first_line, sep, remaining_body = body.partition("\n")
-            cleaned_body = clean_dialogue_text(remaining_body if sep else "")
-            if cleaned_body:
-                return {**msg, "content": f"[환자] {first_line}\n{cleaned_body}"}
-            return {**msg, "content": f"[환자] {first_line}"}
-        return {**msg, "content": f"[환자] {clean_dialogue_text(body)}"}
+    return {"role": role, "content": clean_dialogue_text(content)}
 
-    # 힌트/완료/시스템 메시지는 접두사는 보존하고 본문만 정리한다.
-    known_prefixes = ["[학습 힌트]", "[완료 안내]", "[학습 안내]", "[시스템]", "[활력징후]", "[검사결과]", "[의사 처방]"]
-    for prefix in known_prefixes:
-        if raw.startswith(prefix):
-            body = raw.replace(prefix, "", 1).strip()
-            return {**msg, "content": f"{prefix} {clean_dialogue_text(body)}"}
 
-    return {**msg, "content": clean_dialogue_text(raw)}
+def safe_message(msg: Dict[str, str]) -> Dict[str, str]:
+    """메시지를 저장하기 직전에 HTML/CSS 조각을 제거한다."""
+    return sanitize_message_for_display(msg)
+
 
 def is_exam_cooperation_response(text: str) -> bool:
     """검사 설명이 이미 완료된 맥락에서 짧은 진행 표현을 검사 참여 확인으로 인식한다.
@@ -1059,7 +1091,7 @@ def feedback_message(text: str) -> Dict[str, str]:
 
 def hint_message(text: str) -> Dict[str, str]:
     """2회 이상 핵심 항목이 누락될 때 화면에 표시하는 표준화된 학습 힌트."""
-    return {"role": "assistant", "content": f"[학습 힌트] {text}"}
+    return safe_message({"role": "assistant", "content": f"[학습 힌트] {text}"})
 
 
 def render_sbar_phone_window() -> None:
@@ -1144,9 +1176,9 @@ def render_sbar_phone_window() -> None:
                     f"A: {a_text}\n"
                     f"R: {r_text}"
                 )
-                st.session_state.messages.append({"role": "user", "content": f"☎️ [SBAR 보고]\n{sbar_report}"})
+                st.session_state.messages.append(safe_message({"role": "user", "content": f"☎️ [SBAR 보고]\n{sbar_report}"}))
                 for answer in get_response(sbar_report):
-                    st.session_state.messages.append(answer)
+                    st.session_state.messages.append(safe_message(answer))
                 st.session_state.show_sbar_window = False
                 st.rerun()
 
@@ -1157,13 +1189,15 @@ def render_sbar_phone_window() -> None:
 
 
 def render_message(msg: Dict[str, str]) -> None:
-    """챗봇, 학습자, 시스템 정보를 색상 카드로 표시한다.
+    """챗봇, 학습자, 시스템 정보를 색상 알림 카드로 표시한다.
 
-    최종 수정(v10):
-    - Streamlit 기본 container만 사용하면 배경색이 사라져서, 카드 배경색은 HTML wrapper로 다시 적용한다.
-    - 단, 메시지 본문은 반드시 clean_dialogue_text()로 HTML 조각을 제거한 뒤 escape() 처리한다.
-    - 따라서 <div style=...> 같은 코드가 대화 내용으로 보이지 않으면서도 기존 색상 구분은 유지된다.
+    최종 수정(v11):
+    - 대화 카드 본문에 custom HTML wrapper를 사용하지 않는다.
+    - Streamlit 기본 알림 컴포넌트(st.info/st.warning/st.success)를 사용해 배경색을 유지한다.
+    - 따라서 <div style=...> 같은 코드가 대화창에 노출될 가능성을 제거한다.
+    - 이전 세션에 남은 HTML 조각은 clean_dialogue_text()로 출력 직전 제거한다.
     """
+    msg = sanitize_message_for_display(msg)
     raw = str(msg.get("content", ""))
     role = msg.get("role", "assistant")
 
@@ -1175,23 +1209,20 @@ def render_message(msg: Dict[str, str]) -> None:
     body = raw
     emoji = "ℹ️"
     stage_label = ""
-    bg = "#F8F9FA"
-    border = "#ADB5BD"
+    card_type = "info"  # info, warning, success, error
 
     # 학습자 입력
     if role == "user":
         label = "학생간호사"
         emoji = "🧑‍⚕️"
-        bg = "#E8F1FF"
-        border = "#4C8DFF"
+        card_type = "info"
         body = clean_dialogue_text(raw)
 
     # 챗봇 환자 응답
     elif raw.startswith("[환자]"):
         label = "챗봇 환자 김심근"
         emoji = "🫀"
-        bg = "#FFF4E6"
-        border = "#F59F00"
+        card_type = "warning"
         body = raw.replace("[환자]", "", 1).strip()
         if body.startswith("[현재 단계:"):
             first_line, sep, remaining_body = body.partition("\n")
@@ -1199,7 +1230,7 @@ def render_message(msg: Dict[str, str]) -> None:
             body = remaining_body if sep else ""
         body = clean_dialogue_text(body)
 
-    # 시스템: 환자 확인
+    # 시스템: 환자 확인은 표시하지 않음
     elif raw.startswith("[환자확인]"):
         return
 
@@ -1207,32 +1238,28 @@ def render_message(msg: Dict[str, str]) -> None:
     elif raw.startswith("[활력징후]"):
         label = "시스템 | 활력징후"
         emoji = "📊"
-        bg = "#F1F3F5"
-        border = "#495057"
+        card_type = "info"
         body = clean_dialogue_text(raw.replace("[활력징후]", "", 1).strip())
 
     # 시스템: 검사결과
     elif raw.startswith("[검사결과]"):
         label = "시스템 | 검사결과"
         emoji = "🧪"
-        bg = "#F1F3F5"
-        border = "#495057"
+        card_type = "info"
         body = clean_dialogue_text(raw.replace("[검사결과]", "", 1).strip())
 
     # 시스템: 의사 처방
     elif raw.startswith("[의사 처방]"):
         label = "시스템 | 의사 처방"
         emoji = "💊"
-        bg = "#F1F3F5"
-        border = "#495057"
+        card_type = "info"
         body = clean_dialogue_text(raw.replace("[의사 처방]", "", 1).strip())
 
     # 시뮬레이션 완료 안내
     elif raw.startswith("[완료 안내]"):
         label = "시뮬레이션 완료"
         emoji = "✅"
-        bg = "#F1F3F5"
-        border = "#495057"
+        card_type = "success"
         body = clean_dialogue_text(raw.replace("[완료 안내]", "", 1).strip())
 
     # 기존 [시스템] 메시지 중 객관적 임상자료는 표시하고, 진행 조건 안내는 숨김
@@ -1244,26 +1271,22 @@ def render_message(msg: Dict[str, str]) -> None:
         elif "5분 후" in system_body or "재사정" in system_body:
             label = "시스템 | 재사정 안내"
             emoji = "⏱️"
-            bg = "#F1F3F5"
-            border = "#495057"
+            card_type = "info"
             body = clean_dialogue_text(system_body)
         elif system_body.startswith("의사 처방") or "O₂" in system_body or "NTG" in system_body or "Aspirin" in system_body:
             label = "시스템 | 의사 처방"
             emoji = "💊"
-            bg = "#F1F3F5"
-            border = "#495057"
+            card_type = "info"
             body = clean_dialogue_text(system_body)
         elif system_body.startswith("초기 활력징후") or "BP:" in system_body or "SpO₂" in system_body:
             label = "시스템 | 활력징후"
             emoji = "📊"
-            bg = "#F1F3F5"
-            border = "#495057"
+            card_type = "info"
             body = clean_dialogue_text(system_body)
         elif system_body.startswith("검사결과") or "Troponin" in system_body or "CK-MB" in system_body:
             label = "시스템 | 검사결과"
             emoji = "🧪"
-            bg = "#F1F3F5"
-            border = "#495057"
+            card_type = "info"
             body = clean_dialogue_text(system_body)
         else:
             return
@@ -1272,8 +1295,7 @@ def render_message(msg: Dict[str, str]) -> None:
     elif raw.startswith("[학습 힌트]"):
         label = "학습 힌트"
         emoji = "💡"
-        bg = "#ECFDF5"
-        border = "#10B981"
+        card_type = "success"
         body = clean_dialogue_text(raw.replace("[학습 힌트]", "", 1).strip())
 
     # 학습 안내는 표시하지 않음
@@ -1283,37 +1305,28 @@ def render_message(msg: Dict[str, str]) -> None:
     else:
         body = clean_dialogue_text(raw)
 
-    # 마지막 안전장치: 본문에 HTML 조각이 남아 있으면 다시 제거한다.
+    # 마지막 안전장치: 출력 직전 본문 정리
     body = clean_dialogue_text(body)
 
-    # 메시지 본문과 단계 라벨은 반드시 escape 처리한다.
-    safe_label = escape(label)
-    safe_body = escape(body).replace("\n", "<br>")
-    safe_stage_label = escape(stage_label)
-
-    stage_badge_html = ""
+    lines = [f"{emoji} **{label}**"]
     if stage_label:
-        stage_badge_html = (
-            f'<div style="display:inline-block; background:#FFF7ED; border:1px solid #FDBA74; '
-            f'color:#9A3412; border-radius:999px; padding:4px 11px; '
-            f'font-size:1.02rem; font-weight:800; margin:4px 0 10px 0;">'
-            f'📍 현재 단계: {safe_stage_label}</div>'
-        )
+        lines.append(f"📍 현재 단계: {clean_dialogue_text(stage_label)}")
+    if body:
+        lines.append(body)
 
-    body_html = f'<div style="color:#374151; font-size:1.45rem; line-height:1.6;">{safe_body}</div>' if safe_body else ""
+    display_text = "\n\n".join(lines)
+    # 마지막 최종 안전장치: label/body를 합친 뒤에도 HTML/CSS 조각을 한 번 더 제거한다.
+    display_text = clean_dialogue_text(display_text)
 
-    card_html = f"""
-    <div style="background:{bg}; border-left:5px solid {border}; padding:16px 20px;
-                border-radius:12px; margin:10px 0 14px 0; line-height:1.45;
-                color:#111827; box-shadow:0 1px 2px rgba(0,0,0,0.07); width:100%;">
-        <div style="font-weight:850; margin-bottom:8px; color:#111827; font-size:1.35rem;">
-            {emoji} {safe_label}
-        </div>
-        {stage_badge_html}
-        {body_html}
-    </div>
-    """
-    st.markdown(card_html, unsafe_allow_html=True)
+    # custom HTML 없이 Streamlit 기본 색상 카드로 렌더링한다.
+    if card_type == "warning":
+        st.warning(display_text)
+    elif card_type == "success":
+        st.success(display_text)
+    elif card_type == "error":
+        st.error(display_text)
+    else:
+        st.info(display_text)
 
 def get_current_guidance() -> str:
     """처음 문구를 반복하지 않고 현재 단계에 맞는 재질문/안내를 제공한다."""
@@ -2486,9 +2499,9 @@ with col1:
     if st.button("▶ 시뮬레이션 시작"):
         reset_simulation()
         st.session_state.started = True
-        st.session_state.messages.append(patient_message(
+        st.session_state.messages.append(safe_message(patient_message(
             "허억… 선생님… 가슴이 너무 꽉 조여요. 숨도 차고 식은땀이 나요… 저 이러다 죽는 거 아니죠?"
-        ))
+        )))
         st.rerun()
 
 with col2:
@@ -2549,9 +2562,9 @@ if st.session_state.started and not st.session_state.ended:
     if user_input:
         # 화면에 HTML/CSS 코드가 그대로 보이지 않도록 입력 저장 전에 대화문만 정리한다.
         cleaned_user_input = clean_dialogue_text(user_input)
-        st.session_state.messages.append({"role": "user", "content": cleaned_user_input})
+        st.session_state.messages.append(safe_message({"role": "user", "content": cleaned_user_input}))
         for answer in get_response(cleaned_user_input):
-            st.session_state.messages.append(answer)
+            st.session_state.messages.append(safe_message(answer))
         st.rerun()
 
 # ------------------------------------------------------------
