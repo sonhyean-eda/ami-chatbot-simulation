@@ -1157,12 +1157,12 @@ def render_sbar_phone_window() -> None:
 
 
 def render_message(msg: Dict[str, str]) -> None:
-    """챗봇, 학습자, 시스템 정보를 표시한다.
+    """챗봇, 학습자, 시스템 정보를 색상 카드로 표시한다.
 
-    중요 수정(v9):
-    - 이전 버전처럼 대화 카드 전체를 HTML 문자열로 만들지 않는다.
-    - Streamlit 기본 컴포넌트만 사용하여 <div style=...> 코드가 화면에 노출되는 문제를 차단한다.
-    - 메시지 본문은 표시 직전에 clean_dialogue_text()로 정리한다.
+    최종 수정(v10):
+    - Streamlit 기본 container만 사용하면 배경색이 사라져서, 카드 배경색은 HTML wrapper로 다시 적용한다.
+    - 단, 메시지 본문은 반드시 clean_dialogue_text()로 HTML 조각을 제거한 뒤 escape() 처리한다.
+    - 따라서 <div style=...> 같은 코드가 대화 내용으로 보이지 않으면서도 기존 색상 구분은 유지된다.
     """
     raw = str(msg.get("content", ""))
     role = msg.get("role", "assistant")
@@ -1175,17 +1175,23 @@ def render_message(msg: Dict[str, str]) -> None:
     body = raw
     emoji = "ℹ️"
     stage_label = ""
+    bg = "#F8F9FA"
+    border = "#ADB5BD"
 
     # 학습자 입력
     if role == "user":
         label = "학생간호사"
         emoji = "🧑‍⚕️"
+        bg = "#E8F1FF"
+        border = "#4C8DFF"
         body = clean_dialogue_text(raw)
 
     # 챗봇 환자 응답
     elif raw.startswith("[환자]"):
         label = "챗봇 환자 김심근"
         emoji = "🫀"
+        bg = "#FFF4E6"
+        border = "#F59F00"
         body = raw.replace("[환자]", "", 1).strip()
         if body.startswith("[현재 단계:"):
             first_line, sep, remaining_body = body.partition("\n")
@@ -1201,24 +1207,32 @@ def render_message(msg: Dict[str, str]) -> None:
     elif raw.startswith("[활력징후]"):
         label = "시스템 | 활력징후"
         emoji = "📊"
+        bg = "#F1F3F5"
+        border = "#495057"
         body = clean_dialogue_text(raw.replace("[활력징후]", "", 1).strip())
 
     # 시스템: 검사결과
     elif raw.startswith("[검사결과]"):
         label = "시스템 | 검사결과"
         emoji = "🧪"
+        bg = "#F1F3F5"
+        border = "#495057"
         body = clean_dialogue_text(raw.replace("[검사결과]", "", 1).strip())
 
     # 시스템: 의사 처방
     elif raw.startswith("[의사 처방]"):
         label = "시스템 | 의사 처방"
         emoji = "💊"
+        bg = "#F1F3F5"
+        border = "#495057"
         body = clean_dialogue_text(raw.replace("[의사 처방]", "", 1).strip())
 
     # 시뮬레이션 완료 안내
     elif raw.startswith("[완료 안내]"):
         label = "시뮬레이션 완료"
         emoji = "✅"
+        bg = "#F1F3F5"
+        border = "#495057"
         body = clean_dialogue_text(raw.replace("[완료 안내]", "", 1).strip())
 
     # 기존 [시스템] 메시지 중 객관적 임상자료는 표시하고, 진행 조건 안내는 숨김
@@ -1230,18 +1244,26 @@ def render_message(msg: Dict[str, str]) -> None:
         elif "5분 후" in system_body or "재사정" in system_body:
             label = "시스템 | 재사정 안내"
             emoji = "⏱️"
+            bg = "#F1F3F5"
+            border = "#495057"
             body = clean_dialogue_text(system_body)
         elif system_body.startswith("의사 처방") or "O₂" in system_body or "NTG" in system_body or "Aspirin" in system_body:
             label = "시스템 | 의사 처방"
             emoji = "💊"
+            bg = "#F1F3F5"
+            border = "#495057"
             body = clean_dialogue_text(system_body)
         elif system_body.startswith("초기 활력징후") or "BP:" in system_body or "SpO₂" in system_body:
             label = "시스템 | 활력징후"
             emoji = "📊"
+            bg = "#F1F3F5"
+            border = "#495057"
             body = clean_dialogue_text(system_body)
         elif system_body.startswith("검사결과") or "Troponin" in system_body or "CK-MB" in system_body:
             label = "시스템 | 검사결과"
             emoji = "🧪"
+            bg = "#F1F3F5"
+            border = "#495057"
             body = clean_dialogue_text(system_body)
         else:
             return
@@ -1250,6 +1272,8 @@ def render_message(msg: Dict[str, str]) -> None:
     elif raw.startswith("[학습 힌트]"):
         label = "학습 힌트"
         emoji = "💡"
+        bg = "#ECFDF5"
+        border = "#10B981"
         body = clean_dialogue_text(raw.replace("[학습 힌트]", "", 1).strip())
 
     # 학습 안내는 표시하지 않음
@@ -1262,13 +1286,34 @@ def render_message(msg: Dict[str, str]) -> None:
     # 마지막 안전장치: 본문에 HTML 조각이 남아 있으면 다시 제거한다.
     body = clean_dialogue_text(body)
 
-    with st.container(border=True):
-        st.markdown(f"**{emoji} {label}**")
-        if stage_label:
-            st.caption(f"📍 현재 단계: {stage_label}")
-        if body:
-            # unsafe_allow_html을 사용하지 않음. 코드가 보이지 않도록 순수 텍스트만 출력한다.
-            st.markdown(body.replace("\n", "  \n"))
+    # 메시지 본문과 단계 라벨은 반드시 escape 처리한다.
+    safe_label = escape(label)
+    safe_body = escape(body).replace("\n", "<br>")
+    safe_stage_label = escape(stage_label)
+
+    stage_badge_html = ""
+    if stage_label:
+        stage_badge_html = (
+            f'<div style="display:inline-block; background:#FFF7ED; border:1px solid #FDBA74; '
+            f'color:#9A3412; border-radius:999px; padding:4px 11px; '
+            f'font-size:1.02rem; font-weight:800; margin:4px 0 10px 0;">'
+            f'📍 현재 단계: {safe_stage_label}</div>'
+        )
+
+    body_html = f'<div style="color:#374151; font-size:1.45rem; line-height:1.6;">{safe_body}</div>' if safe_body else ""
+
+    card_html = f"""
+    <div style="background:{bg}; border-left:5px solid {border}; padding:16px 20px;
+                border-radius:12px; margin:10px 0 14px 0; line-height:1.45;
+                color:#111827; box-shadow:0 1px 2px rgba(0,0,0,0.07); width:100%;">
+        <div style="font-weight:850; margin-bottom:8px; color:#111827; font-size:1.35rem;">
+            {emoji} {safe_label}
+        </div>
+        {stage_badge_html}
+        {body_html}
+    </div>
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
 
 def get_current_guidance() -> str:
     """처음 문구를 반복하지 않고 현재 단계에 맞는 재질문/안내를 제공한다."""
