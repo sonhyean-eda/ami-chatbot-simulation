@@ -1188,15 +1188,77 @@ def render_sbar_phone_window() -> None:
 
 
 
-def render_message(msg: Dict[str, str]) -> None:
-    """챗봇, 학습자, 시스템 정보를 색상 알림 카드로 표시한다.
+def html_text(text: str) -> str:
+    """대화 본문을 HTML 카드 안에 안전하게 넣기 위해 줄바꿈만 <br>로 바꾼다."""
+    cleaned = clean_dialogue_text(text)
+    return escape(cleaned).replace("\n", "<br>")
 
-    최종 수정(v11):
-    - 대화 카드 본문에 custom HTML wrapper를 사용하지 않는다.
-    - Streamlit 기본 알림 컴포넌트(st.info/st.warning/st.success/st.error)를 사용해 배경색을 유지한다.
-    - 학생간호사와 시스템 자료가 같은 색으로 보이지 않도록 시스템 자료는 st.error 카드로 구분한다.
-    - 따라서 <div style=...> 같은 코드가 대화창에 노출될 가능성을 제거한다.
-    - 이전 세션에 남은 HTML 조각은 clean_dialogue_text()로 출력 직전 제거한다.
+
+def render_chat_card(label: str, emoji: str, body: str, stage_label: str = "", card_type: str = "info") -> None:
+    """색상 있는 대화 카드를 렌더링한다.
+
+    중요:
+    - 카드 틀은 HTML로 만들지만, 실제 대화 내용은 clean_dialogue_text()와 escape()를 거친다.
+    - 따라서 이전 세션에 저장된 <div style=...> 조각이 대화 내용으로 노출되지 않는다.
+    - 현재 단계 라벨과 대화 본문은 한 줄에 붙지 않고, 서로 분리되어 보이도록 구성한다.
+    """
+    palette = {
+        "student": {"bg": "#E8F1FF", "border": "#4C8DFF", "title": "#0F172A", "text": "#1F2937"},
+        "patient": {"bg": "#FFF4E6", "border": "#F59F00", "title": "#0F172A", "text": "#374151"},
+        "system": {"bg": "#F1F5F9", "border": "#64748B", "title": "#0F172A", "text": "#334155"},
+        "hint": {"bg": "#ECFDF5", "border": "#10B981", "title": "#064E3B", "text": "#065F46"},
+        "complete": {"bg": "#F0FDF4", "border": "#22C55E", "title": "#14532D", "text": "#166534"},
+        "default": {"bg": "#F8FAFC", "border": "#94A3B8", "title": "#0F172A", "text": "#334155"},
+    }
+    style = palette.get(card_type, palette["default"])
+
+    safe_label = escape(clean_dialogue_text(label))
+    safe_stage = escape(clean_dialogue_text(stage_label)) if stage_label else ""
+    safe_body = html_text(body)
+
+    stage_html = ""
+    if safe_stage:
+        stage_html = (
+            f"<div style=\"margin-top:12px; margin-bottom:12px;\">"
+            f"<span style=\"display:inline-block; background:#FFFFFFAA; border:1px solid {style['border']}; "
+            f"color:{style['title']}; border-radius:999px; padding:5px 12px; "
+            f"font-size:1.02rem; font-weight:800; line-height:1.4;\">"
+            f"📍 현재 단계: {safe_stage}"
+            f"</span></div>"
+        )
+
+    # 본문은 단계 표시와 분리되도록 별도 block으로 배치한다.
+    body_html = ""
+    if safe_body:
+        body_html = (
+            f"<div style=\"margin-top:10px; padding-top:2px; color:{style['text']}; "
+            f"font-size:1.22rem; line-height:1.75; word-break:keep-all; overflow-wrap:anywhere;\">"
+            f"{safe_body}"
+            f"</div>"
+        )
+
+    card_html = (
+        f"<div style=\"width:100%; box-sizing:border-box; background:{style['bg']}; "
+        f"border-left:7px solid {style['border']}; border-radius:14px; "
+        f"padding:24px 28px; margin:14px 0 20px 0; min-height:96px; "
+        f"box-shadow:0 1px 3px rgba(15,23,42,0.10);\">"
+        f"<div style=\"font-weight:900; color:{style['title']}; font-size:1.28rem; line-height:1.5;\">"
+        f"{escape(emoji)} {safe_label}"
+        f"</div>"
+        f"{stage_html}"
+        f"{body_html}"
+        f"</div>"
+    )
+    st.markdown(card_html, unsafe_allow_html=True)
+
+
+def render_message(msg: Dict[str, str]) -> None:
+    """챗봇, 학습자, 시스템 정보를 넓은 색상 카드로 표시한다.
+
+    v16 수정:
+    - st.info/st.warning 기본 알림 대신 안전한 custom card를 사용해 카드 높이와 여백을 키웠다.
+    - 실제 대화 내용은 반드시 clean_dialogue_text()와 escape()를 거쳐 HTML 코드가 보이지 않게 했다.
+    - 환자 메시지의 현재 단계 라벨과 대화 내용을 한 줄에 붙이지 않고, 단계 라벨 아래에 본문을 따로 표시한다.
     """
     msg = sanitize_message_for_display(msg)
     raw = str(msg.get("content", ""))
@@ -1210,20 +1272,20 @@ def render_message(msg: Dict[str, str]) -> None:
     body = raw
     emoji = "ℹ️"
     stage_label = ""
-    card_type = "info"  # info, warning, success, error
+    card_type = "default"
 
     # 학습자 입력
     if role == "user":
         label = "학생간호사"
         emoji = "🧑‍⚕️"
-        card_type = "info"
+        card_type = "student"
         body = clean_dialogue_text(raw)
 
     # 챗봇 환자 응답
     elif raw.startswith("[환자]"):
         label = "챗봇 환자 김심근"
         emoji = "🫀"
-        card_type = "warning"
+        card_type = "patient"
         body = raw.replace("[환자]", "", 1).strip()
         if body.startswith("[현재 단계:"):
             first_line, sep, remaining_body = body.partition("\n")
@@ -1239,28 +1301,28 @@ def render_message(msg: Dict[str, str]) -> None:
     elif raw.startswith("[활력징후]"):
         label = "시스템 | 활력징후"
         emoji = "📊"
-        card_type = "error"
+        card_type = "system"
         body = clean_dialogue_text(raw.replace("[활력징후]", "", 1).strip())
 
     # 시스템: 검사결과
     elif raw.startswith("[검사결과]"):
         label = "시스템 | 검사결과"
         emoji = "🧪"
-        card_type = "error"
+        card_type = "system"
         body = clean_dialogue_text(raw.replace("[검사결과]", "", 1).strip())
 
     # 시스템: 의사 처방
     elif raw.startswith("[의사 처방]"):
         label = "시스템 | 의사 처방"
         emoji = "💊"
-        card_type = "error"
+        card_type = "system"
         body = clean_dialogue_text(raw.replace("[의사 처방]", "", 1).strip())
 
     # 시뮬레이션 완료 안내
     elif raw.startswith("[완료 안내]"):
         label = "시뮬레이션 완료"
         emoji = "✅"
-        card_type = "success"
+        card_type = "complete"
         body = clean_dialogue_text(raw.replace("[완료 안내]", "", 1).strip())
 
     # 기존 [시스템] 메시지 중 객관적 임상자료는 표시하고, 진행 조건 안내는 숨김
@@ -1272,22 +1334,22 @@ def render_message(msg: Dict[str, str]) -> None:
         elif "5분 후" in system_body or "재사정" in system_body:
             label = "시스템 | 재사정 안내"
             emoji = "⏱️"
-            card_type = "error"
+            card_type = "system"
             body = clean_dialogue_text(system_body)
         elif system_body.startswith("의사 처방") or "O₂" in system_body or "NTG" in system_body or "Aspirin" in system_body:
             label = "시스템 | 의사 처방"
             emoji = "💊"
-            card_type = "error"
+            card_type = "system"
             body = clean_dialogue_text(system_body)
         elif system_body.startswith("초기 활력징후") or "BP:" in system_body or "SpO₂" in system_body:
             label = "시스템 | 활력징후"
             emoji = "📊"
-            card_type = "error"
+            card_type = "system"
             body = clean_dialogue_text(system_body)
         elif system_body.startswith("검사결과") or "Troponin" in system_body or "CK-MB" in system_body:
             label = "시스템 | 검사결과"
             emoji = "🧪"
-            card_type = "error"
+            card_type = "system"
             body = clean_dialogue_text(system_body)
         else:
             return
@@ -1296,7 +1358,7 @@ def render_message(msg: Dict[str, str]) -> None:
     elif raw.startswith("[학습 힌트]"):
         label = "학습 힌트"
         emoji = "💡"
-        card_type = "success"
+        card_type = "hint"
         body = clean_dialogue_text(raw.replace("[학습 힌트]", "", 1).strip())
 
     # 학습 안내는 표시하지 않음
@@ -1308,26 +1370,8 @@ def render_message(msg: Dict[str, str]) -> None:
 
     # 마지막 안전장치: 출력 직전 본문 정리
     body = clean_dialogue_text(body)
-
-    lines = [f"{emoji} **{label}**"]
-    if stage_label:
-        lines.append(f"📍 현재 단계: {clean_dialogue_text(stage_label)}")
-    if body:
-        lines.append(body)
-
-    display_text = "\n\n".join(lines)
-    # 마지막 최종 안전장치: label/body를 합친 뒤에도 HTML/CSS 조각을 한 번 더 제거한다.
-    display_text = clean_dialogue_text(display_text)
-
-    # custom HTML 없이 Streamlit 기본 색상 카드로 렌더링한다.
-    if card_type == "warning":
-        st.warning(display_text)
-    elif card_type == "success":
-        st.success(display_text)
-    elif card_type == "error":
-        st.error(display_text)
-    else:
-        st.info(display_text)
+    stage_label = clean_dialogue_text(stage_label)
+    render_chat_card(label=label, emoji=emoji, body=body, stage_label=stage_label, card_type=card_type)
 
 def get_current_guidance() -> str:
     """처음 문구를 반복하지 않고 현재 단계에 맞는 재질문/안내를 제공한다."""
