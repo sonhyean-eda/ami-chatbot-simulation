@@ -1193,7 +1193,8 @@ def render_message(msg: Dict[str, str]) -> None:
 
     최종 수정(v11):
     - 대화 카드 본문에 custom HTML wrapper를 사용하지 않는다.
-    - Streamlit 기본 알림 컴포넌트(st.info/st.warning/st.success)를 사용해 배경색을 유지한다.
+    - Streamlit 기본 알림 컴포넌트(st.info/st.warning/st.success/st.error)를 사용해 배경색을 유지한다.
+    - 학생간호사와 시스템 자료가 같은 색으로 보이지 않도록 시스템 자료는 st.error 카드로 구분한다.
     - 따라서 <div style=...> 같은 코드가 대화창에 노출될 가능성을 제거한다.
     - 이전 세션에 남은 HTML 조각은 clean_dialogue_text()로 출력 직전 제거한다.
     """
@@ -1238,21 +1239,21 @@ def render_message(msg: Dict[str, str]) -> None:
     elif raw.startswith("[활력징후]"):
         label = "시스템 | 활력징후"
         emoji = "📊"
-        card_type = "info"
+        card_type = "error"
         body = clean_dialogue_text(raw.replace("[활력징후]", "", 1).strip())
 
     # 시스템: 검사결과
     elif raw.startswith("[검사결과]"):
         label = "시스템 | 검사결과"
         emoji = "🧪"
-        card_type = "info"
+        card_type = "error"
         body = clean_dialogue_text(raw.replace("[검사결과]", "", 1).strip())
 
     # 시스템: 의사 처방
     elif raw.startswith("[의사 처방]"):
         label = "시스템 | 의사 처방"
         emoji = "💊"
-        card_type = "info"
+        card_type = "error"
         body = clean_dialogue_text(raw.replace("[의사 처방]", "", 1).strip())
 
     # 시뮬레이션 완료 안내
@@ -1271,22 +1272,22 @@ def render_message(msg: Dict[str, str]) -> None:
         elif "5분 후" in system_body or "재사정" in system_body:
             label = "시스템 | 재사정 안내"
             emoji = "⏱️"
-            card_type = "info"
+            card_type = "error"
             body = clean_dialogue_text(system_body)
         elif system_body.startswith("의사 처방") or "O₂" in system_body or "NTG" in system_body or "Aspirin" in system_body:
             label = "시스템 | 의사 처방"
             emoji = "💊"
-            card_type = "info"
+            card_type = "error"
             body = clean_dialogue_text(system_body)
         elif system_body.startswith("초기 활력징후") or "BP:" in system_body or "SpO₂" in system_body:
             label = "시스템 | 활력징후"
             emoji = "📊"
-            card_type = "info"
+            card_type = "error"
             body = clean_dialogue_text(system_body)
         elif system_body.startswith("검사결과") or "Troponin" in system_body or "CK-MB" in system_body:
             label = "시스템 | 검사결과"
             emoji = "🧪"
-            card_type = "info"
+            card_type = "error"
             body = clean_dialogue_text(system_body)
         else:
             return
