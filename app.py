@@ -2061,7 +2061,9 @@ def classify_input(user_text: str) -> str:
         "수집한 자료를 종합", "자료를 종합", "증상과 위험요인", "위험요인",
         "현재 증상으로 보아", "현재 증상으로 봤을 때", "심장 상태 확인이 필요",
         "acute myocardial infarction", "myocardial infarction", "heart attack",
-        "possibility of ami", "suspected ami", "possible acute myocardial infarction"
+        "possibility of ami", "suspected ami", "possible acute myocardial infarction",
+        "급성심근경색이 의심됩니다", "급성 심근경색이 의심됩니다", "현재 증상으로 심근경색이 의심됩니다",
+        "현재 증상으로 급성심근경색이 의심됩니다", "AMI가 의심됩니다", 
     ]
     if has_any(text, ami_judgment_keywords):
         return "ami_judgment"
