@@ -7,7 +7,7 @@ import streamlit as st
 from openai import OpenAI
 
 # ============================================================
-# AMI 챗봇 가상환자 시뮬레이션
+# AMI 챗봇 가상환자 프로그램
 # - 챗봇 역할: 급성심근경색 의심 환자 '김심근'
 # - 학습자 역할: 응급실 학생간호사
 # - 시스템 역할: 활력징후, 검사결과, 의사 처방 제시
@@ -22,7 +22,7 @@ from openai import OpenAI
 # 1. 페이지 설정
 # ------------------------------------------------------------
 st.set_page_config(
-    page_title="AMI 챗봇 가상환자 시뮬레이션",
+    page_title="AMI 챗봇 가상환자 프로그램",
     page_icon="🫀",
     layout="wide"
 )
@@ -36,7 +36,7 @@ client = OpenAI(api_key=api_key) if api_key else None
 # ------------------------------------------------------------
 # 3. 앱 제목, 프로그램 설명 토글 및 상황 제시
 # ------------------------------------------------------------
-st.title("🫀 급성심근경색(AMI) 챗봇 가상환자 시뮬레이션")
+st.title("🫀 급성심근경색(AMI) 챗봇 가상환자 프로그램")
 
 st.markdown("""
 <style>
@@ -85,7 +85,7 @@ button, .stButton button {
 show_program_description = st.sidebar.toggle("📘 프로그램 설명 보기", value=False)
 
 PROGRAM_DESCRIPTION = """
-이 프로그램은 **King의 목표달성이론을 적용한 AMI 챗봇 가상환자 시뮬레이션 프로토타입**입니다.
+이 프로그램은 **King의 목표달성이론을 적용한 AMI 챗봇 가상환자 프로토타입**입니다.
 
 **역할 구분**
 - **챗봇:** 급성심근경색이 의심되는 62세 남성 환자 *김심근* 역할만 수행합니다.
@@ -131,8 +131,8 @@ if show_program_description:
     st.markdown(PROGRAM_DESCRIPTION)
     st.info(PROGRESS_DESCRIPTION)
 else:
-    # 첫 화면은 기존처럼 시뮬레이션 상황을 중심으로 제시
-    st.subheader("🚨 시뮬레이션 상황")
+    # 첫 화면은 기존처럼 시나리오 상황을 중심으로 제시
+    st.subheader("🚨 시나리오 상황")
 
     st.markdown("""
     ### 👤 환자 기본정보
@@ -664,6 +664,73 @@ def safe_message(msg: Dict[str, str]) -> Dict[str, str]:
     return sanitize_message_for_display(msg)
 
 
+
+
+def is_ami_judgment_statement(text: str) -> bool:
+    """AMI 가능성 판단 문장을 유연하게 인식한다.
+
+    기존에는 "급성심근경색 의심"처럼 정확한 띄어쓰기/조사 조합만 잘 잡혀서,
+    "급성심근경색이 의심됩니다", "급성 심근경색 의심",
+    "Acute myocardial infarction is suspected" 같은 자연스러운 표현이
+    general로 빠질 수 있었다.
+    이 함수는 공백을 제거한 compact text까지 함께 확인해
+    AMI 판단 단계가 올바르게 인식되도록 한다.
+    """
+    raw = str(text or "").lower()
+    compact = re.sub(r"\s+", "", raw)
+
+    disease_terms = [
+        "급성심근경색", "급성 심근경색", "심근경색", "심근 경색",
+        "심장마비", "심장 마비", "ami", "stemi",
+        "acute myocardial infarction", "myocardial infarction", "heart attack",
+    ]
+    disease_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in disease_terms]
+
+    suspicion_terms = [
+        "의심", "가능성", "가능", "보입니다", "보여", "보여요",
+        "같습니다", "같아요", "생각", "추정",
+        "suspect", "suspected", "suspicious", "possible", "likely",
+        "is suspected", "seems", "appears", "concern", "concerned",
+    ]
+    suspicion_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in suspicion_terms]
+
+    test_terms = [
+        "심전도", "ecg", "ekg", "혈액검사", "혈액 검사", "피검사", "피 검사",
+        "심근효소", "심근 효소", "트로포닌", "troponin", "ck-mb", "ckmb",
+        "cardiac enzyme", "blood test", "blood work",
+    ]
+    test_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in test_terms]
+
+    need_terms = [
+        "필요", "해야", "확인해야", "검사해야", "시행", "진행",
+        "need", "needed", "necessary", "should", "must", "required",
+    ]
+    need_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in need_terms]
+
+    current_symptom_terms = [
+        "현재증상", "현재 증상", "증상으로", "자료를종합", "자료를 종합",
+        "흉통", "가슴통증", "호흡곤란", "식은땀", "방사통",
+        "current symptoms", "symptoms", "chest pain", "shortness of breath",
+    ]
+    current_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in current_symptom_terms]
+
+    has_disease = any(term in compact for term in disease_terms_compact)
+    has_suspicion = any(term in compact for term in suspicion_terms_compact)
+    has_test = any(term in compact for term in test_terms_compact)
+    has_need = any(term in compact for term in need_terms_compact)
+    has_current_context = any(term in compact for term in current_terms_compact)
+
+    # 예: "현재 증상으로 급성심근경색이 의심됩니다."
+    if has_disease and has_suspicion:
+        return True
+
+    # 예: "현재 증상으로 심전도와 심근효소 검사가 필요합니다."
+    # 단순 검사 설명 문장과 구분하기 위해 '현재 증상/자료/흉통' 같은 판단 맥락을 함께 요구한다.
+    if has_current_context and has_test and has_need:
+        return True
+
+    return False
+
 def is_exam_cooperation_response(text: str) -> bool:
     """검사 설명이 이미 완료된 맥락에서 짧은 진행 표현을 검사 참여 확인으로 인식한다.
 
@@ -842,10 +909,13 @@ def get_reassessment_patient_response_for_current_state(updates: List[str]) -> s
     if response_parts:
         return " ".join(response_parts)
 
+    # 학생이 “중재 후 상태를 다시 확인하겠습니다”처럼 포괄적으로 말한 경우에는
+    # 통증 3점/호흡 완화/불안 감소 값을 먼저 노출하지 않는다.
+    # 재사정 단계의 학습 목표는 학생이 통증·호흡곤란·불안을 각각 확인하는 것이므로,
+    # 구체적인 항목을 질문하도록 유도한다.
     return (
-        "중재 후 상태를 다시 확인해 주시는 거죠… "
-        "통증은 처음 8점에서 지금은 3점 정도로 줄었고, 숨쉬기도 조금 편해졌어요. "
-        "불안도 아까보다는 줄어든 것 같아요."
+        "네… 중재 후 상태를 다시 확인해 주세요. "
+        "가슴 통증, 숨쉬기, 불안감 중 어떤 부분을 먼저 확인해 주실 건가요?"
     )
 
 def reassessment_symptoms_all_checked() -> bool:
@@ -2053,19 +2123,9 @@ def classify_input(user_text: str) -> str:
         return "intervention"
 
     # AMI 가능성 판단
-    ami_judgment_keywords = [
-        "급성심근경색 가능성", "급성심근경색 의심", "ami 가능성", "ami 의심",
-        "심근경색 가능성", "심근경색 의심", "stemi 가능성", "stemi 의심",
-        "심장 문제 가능성", "심장 혈관 문제", "심혈관 문제", "심장 쪽 문제", 
-        "심혈관질환", "심혈관",
-        "수집한 자료를 종합", "자료를 종합", "증상과 위험요인", "위험요인",
-        "현재 증상으로 보아", "현재 증상으로 봤을 때", "심장 상태 확인이 필요",
-        "acute myocardial infarction", "myocardial infarction", "heart attack",
-        "possibility of ami", "suspected ami", "possible acute myocardial infarction",
-        "급성심근경색이 의심됩니다", "급성 심근경색이 의심됩니다", "현재 증상으로 심근경색이 의심됩니다",
-        "현재 증상으로 급성심근경색이 의심됩니다", "AMI가 의심됩니다", 
-    ]
-    if has_any(text, ami_judgment_keywords):
+    # 자연스러운 표현(예: "급성심근경색이 의심됩니다", "급성 심근경색 의심",
+    # "Acute myocardial infarction is suspected")도 잡기 위해 보강 함수 사용.
+    if is_ami_judgment_statement(text):
         return "ami_judgment"
 
     # 병력·위험요인 확인: 활력징후보다 먼저 둔다.
@@ -2611,7 +2671,7 @@ st.sidebar.write(f"{'✅' if reassessment_symptoms_all_checked() else '⬜'} 통
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("▶ 시뮬레이션 시작"):
+    if st.button("▶ 프로그램 시작"):
         reset_simulation()
         st.session_state.started = True
         st.session_state.messages.append(safe_message(patient_message(
@@ -2696,7 +2756,7 @@ if st.session_state.started:
         if not ready_for_debriefing:
             st.info("중재 후 재사정과 목표달성 확인까지 진행한 후 디브리핑을 시작하는 것을 권장합니다.")
         else:
-            st.success("시뮬레이션이 종료되었습니다. 아래 버튼을 눌러 디브리핑을 시작하세요.")
+            st.success("프로그램이 종료되었습니다. 아래 버튼을 눌러 디브리핑을 시작하세요.")
         if st.button("디브리핑 보기", disabled=not ready_for_debriefing):
             mark_checklist("12. 성찰: 디브리핑")
             st.session_state.ended = True
@@ -2704,7 +2764,7 @@ if st.session_state.started:
             st.rerun()
 
     if st.session_state.show_debriefing and not st.session_state.debrief_submitted:
-        st.success("시뮬레이션이 종료되었습니다. 아래 질문을 바탕으로 먼저 성찰 답변을 작성해보세요.")
+        st.success("프로그램이 종료되었습니다. 아래 질문을 바탕으로 먼저 성찰 답변을 작성해보세요.")
         for idx, question in enumerate(DEBRIEFING_QUESTIONS, start=1):
             st.write(f"{idx}. {question}")
 
