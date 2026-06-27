@@ -734,6 +734,130 @@ def is_ami_judgment_statement(text: str) -> bool:
 
     return False
 
+
+def is_labs_transition_expression(text: str) -> bool:
+    """검사 설명 완료 후 검사결과 확인 단계로 넘어가는 표현을 폭넓게 인식한다.
+
+    핵심 보완점
+    - has_any()는 단순 부분 문자열 비교라서 "test execution"과 "execution of test"를
+      같은 뜻으로 이해하지 못한다.
+    - 따라서 검사 시행/진행/결과 확인을 의미하는 한국어·영어 표현을 별도로 모아 확인한다.
+    - 이 함수는 주로 Step 6 완료 후 Step 7 검사결과 확인으로 넘어갈 때 사용한다.
+    """
+    raw = str(text or "").lower().strip()
+    compact = re.sub(r"[\s\-_/.,:;!?()\[\]{}]+", "", raw)
+
+    phrases = [
+        # Korean: 검사 시행/진행/수행
+        "검사 진행", "검사를 진행", "검사 진행하겠습니다", "검사를 진행하겠습니다",
+        "검사 진행할게요", "검사를 진행할게요", "검사 시행", "검사를 시행",
+        "검사 시행하겠습니다", "검사를 시행하겠습니다", "검사 실시", "검사를 실시",
+        "검사 실시하겠습니다", "검사를 실시하겠습니다", "검사 수행", "검사를 수행",
+        "검사 수행하겠습니다", "검사를 수행하겠습니다", "검사하겠습니다", "검사 하겠습니다",
+        "검사 해보겠습니다", "검사를 해보겠습니다", "검사 해드리겠습니다", "검사해드리겠습니다",
+        "검사 시작", "검사를 시작", "검사 시작하겠습니다", "검사를 시작하겠습니다",
+        "바로 검사", "지금 검사", "검사 들어가겠습니다",
+
+        # Korean: 검사결과 확인
+        "검사 결과 확인", "검사결과 확인", "검사 결과를 확인", "검사결과를 확인",
+        "검사 결과 확인하겠습니다", "검사 결과를 확인하겠습니다",
+        "검사결과 확인하겠습니다", "검사결과를 확인하겠습니다",
+        "검사 수치 확인", "검사수치 확인", "결과 확인", "결과를 확인",
+        "결과 확인하겠습니다", "결과를 확인하겠습니다",
+
+        # English: conduct/perform/run/proceed/check results
+        "conduct the test", "conduct a test", "conduct tests", "conduct an inspection", "conduct inspection",
+        "we will conduct the test", "we will conduct a test", "we will conduct tests",
+        "we will conduct an inspection", "i will conduct the test", "i will conduct an inspection",
+        "perform the test", "perform a test", "perform tests", "we will perform the test",
+        "run the test", "run tests", "we will run the test", "do the test", "do tests",
+        "proceed with the test", "proceed with testing", "proceed with the inspection",
+        "proceed with an inspection", "proceed with inspection", "we will proceed with the test",
+        "we will proceed with the inspection",
+        "carry out the test", "carry out tests", "carry out the inspection",
+        "implement the test", "implement testing", "test implementation",
+        "test execution", "execution of test", "execution of the test",
+        "test progress", "progress of test", "progress of the test", "inspection progress",
+        "check the results", "check results", "check the test results", "check test results",
+        "i will check the results", "i will check the test results",
+        "we will check the results", "we will check the test results",
+    ]
+    compact_phrases = [re.sub(r"[\s\-_/.,:;!?()\[\]{}]+", "", phrase.lower()) for phrase in phrases]
+    return any(phrase in raw for phrase in phrases) or any(phrase in compact for phrase in compact_phrases)
+
+
+def is_valid_interaction_goal_statement(text: str) -> bool:
+    """상호작용 단계의 '간호목표 공유'가 실제 임상 목표인지 확인한다.
+
+    v30 수정
+    - 기존에는 '목표'라는 단어만 포함되어도 goal_set=True가 되어
+      '목표는 바나나입니다'처럼 부적절한 답변도 다음 단계로 넘어가는 문제가 있었다.
+    - 따라서 목표라는 단어 자체가 아니라, AMI 상황에서 적절한 목표 내용
+      즉 통증 완화, 호흡곤란 감소, 불안 감소/안정이 포함될 때만 인정한다.
+    """
+    raw = str(text or "").lower()
+    compact = re.sub(r"\s+", "", raw)
+
+    # 명백히 부적절한 예시/무관 단어는 목표로 인정하지 않는다.
+    invalid_terms = [
+        "바나나", "banana", "bananas", "사과", "apple", "apples",
+        "딸기", "strawberry", "커피", "coffee", "아무거나", "모르겠", "몰라"
+    ]
+    invalid_compact = [re.sub(r"\s+", "", term.lower()) for term in invalid_terms]
+    if any(term in compact for term in invalid_compact):
+        return False
+
+    pain_terms = [
+        "통증", "흉통", "가슴통증", "가슴 통증", "가슴답답", "가슴 답답",
+        "pain", "chest pain", "chest discomfort"
+    ]
+    breathing_terms = [
+        "호흡곤란", "호흡 곤란", "숨쉬기", "숨 쉬기", "숨찬", "숨 차", "호흡",
+        "breathing", "shortness of breath", "dyspnea", "dyspnoea", "breath"
+    ]
+    anxiety_terms = [
+        # "안정/안심"은 개선 표현으로만 사용한다.
+        # 이를 증상어로도 넣으면 "목표는 안정입니다" 같은 모호한 답변이 통과될 수 있다.
+        "불안", "불안감", "걱정", "두려움", "무서움",
+        "anxiety", "anxious", "worry", "fear"
+    ]
+    improvement_terms = [
+        "줄", "감소", "완화", "경감", "낮추", "조절", "완전히 없", "편하게", "편해",
+        "호전", "개선", "안정", "안심", "덜", "relieve", "relief", "reduce", "decrease",
+        "lessen", "ease", "control", "improve", "stabilize", "stable", "comfortable"
+    ]
+    goal_context_terms = [
+        "목표", "공동목표", "공동 목표", "치료목표", "치료 목표", "간호목표", "간호 목표",
+        "goal", "goals", "aim", "objective", "target", "plan is to", "we want to", "we aim to"
+    ]
+
+    def contains_any(terms):
+        compact_terms = [re.sub(r"\s+", "", term.lower()) for term in terms]
+        return any(term in raw for term in terms) or any(term in compact for term in compact_terms)
+
+    has_goal_context = contains_any(goal_context_terms)
+    has_improvement = contains_any(improvement_terms)
+    has_pain = contains_any(pain_terms)
+    has_breathing = contains_any(breathing_terms)
+    has_anxiety = contains_any(anxiety_terms)
+
+    # '목표는 통증 완화/호흡곤란 감소/불안 감소'처럼 목표 맥락과 임상 목표가 함께 있으면 인정한다.
+    if has_goal_context and has_improvement and (has_pain or has_breathing or has_anxiety):
+        return True
+
+    # 학생이 질문에 대한 답으로 '통증을 줄이고 숨쉬기 편하게 하겠습니다'처럼
+    # 목표라는 단어 없이도 적절한 임상 목표를 제시하면 인정한다.
+    symptom_goal_count = sum([
+        has_pain and has_improvement,
+        has_breathing and has_improvement,
+        has_anxiety and has_improvement,
+    ])
+    if symptom_goal_count >= 1 and (has_pain or has_breathing or has_anxiety):
+        return True
+
+    return False
+
+
 def is_exam_cooperation_response(text: str) -> bool:
     """검사 설명이 이미 완료된 맥락에서 짧은 진행 표현을 검사 참여 확인으로 인식한다.
 
@@ -756,7 +880,9 @@ def is_exam_cooperation_response(text: str) -> bool:
 
         # 검사 이후 결과 확인으로 넘어가려는 표현
         "검사실 확인", "검사 결과 확인", "검사결과 확인",
-        "결과 확인", "검사 후 결과", "결과를 확인",
+        "검사 결과를 확인", "검사결과를 확인", "검사 결과 확인하겠습니다", "검사 결과를 확인하겠습니다",
+        "검사결과 확인하겠습니다", "검사결과를 확인하겠습니다", "검사 결과 보겠습니다", "검사결과 보겠습니다",
+        "결과 확인", "결과를 확인", "검사 후 결과", "결과를 확인하겠습니다",
 
         # 기존 협조/동의 표현
         "협조", "협조해 주실 수", "협조해주시겠", "동의", "동의하시",
@@ -765,9 +891,14 @@ def is_exam_cooperation_response(text: str) -> bool:
 
         # 영어 표현
         "agree", "consent", "proceed", "can we proceed", "may i proceed",
-        "is it okay", "okay to proceed", "we can proceed", "start the test"
+        "is it okay", "okay to proceed", "we can proceed", "start the test",
+        "conduct the test", "conduct a test", "conduct an inspection", "conduct inspection",
+        "we will conduct the test", "we will conduct an inspection",
+        "proceed with the test", "proceed with an inspection", "proceed with inspection",
+        "perform the test", "run the test", "check the results", "check the test results",
+        "i will check the results", "i will check the test results", "we will check the test results"
     ]
-    return has_any(text, exam_cooperation_keywords)
+    return has_any(text, exam_cooperation_keywords) or is_labs_transition_expression(text)
 
 
 
@@ -994,7 +1125,7 @@ def get_interaction_patient_response_for_current_state(updates: List[str]) -> st
         return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 지금 제 상태에서 무엇이 가장 문제인지 쉽게 설명해 주세요…"
 
     if st.session_state.problem_identified and not st.session_state.goal_set:
-        return "네… 제일 힘든 건 가슴 통증이랑 숨찬 거예요. 그럼 지금 치료 목표는 무엇인지 설명해 주세요."
+        return "네… 제일 힘든 건 가슴 통증이랑 숨찬 거예요. 통증 완화, 호흡곤란 감소, 불안 감소처럼 지금 치료 목표를 구체적으로 설명해 주세요."
 
     if st.session_state.problem_identified and st.session_state.goal_set and not st.session_state.means_explained:
         return "제 문제와 목표는 이해했어요… 그 목표를 위해 앞으로 어떤 치료나 간호를 받게 되는지 알려주세요."
@@ -1763,7 +1894,9 @@ def update_interaction_state(text: str) -> List[str]:
         st.session_state.problem_identified = True
         updates.append("환자 문제 확인")
 
-    if has_any(text, goal_keywords) and not st.session_state.goal_set:
+    # v30: '목표'라는 단어만으로는 간호목표 공유를 완료하지 않는다.
+    # 통증 완화, 호흡곤란 감소, 불안 감소/안정처럼 실제 임상 목표가 포함될 때만 인정한다.
+    if is_valid_interaction_goal_statement(text) and not st.session_state.goal_set:
         st.session_state.goal_set = True
         updates.append("간호목표 공유")
 
@@ -2053,7 +2186,7 @@ def classify_input(user_text: str) -> str:
 
     # 검사 설명은 끝났고 검사 참여 확인만 남은 경우, 짧은 진행 표현도
     # 검사 설명 단계로 보내 검사 참여 확인으로 처리한다.
-    # 예: “네”, “바로 가능합니다”, “검사 진행하겠습니다”, “검사 결과 확인하겠습니다”.
+    # 예: “네”, “바로 가능합니다”, “검사 진행하겠습니다”, “검사 결과를 확인하겠습니다”, “I will check the test results”.
     # 단, 심전도와 혈액검사 설명이 모두 완료된 상태에서만 적용해
     # 설명 없이 검사를 진행하는 오류를 막는다.
     if (
@@ -2064,6 +2197,18 @@ def classify_input(user_text: str) -> str:
         and is_exam_cooperation_response(text)
     ):
         return "exam_explanation"
+
+    # ------------------------------------------------------------
+    # 단계 우선순위 0: 검사 설명 완료 후에는 반드시 검사결과 확인으로 진행
+    # ------------------------------------------------------------
+    # 검사 설명과 환자 참여 확인이 끝난 뒤에는 학생이
+    # “검사 진행하겠습니다”, “검사 시행하겠습니다”, “We will conduct the test”처럼
+    # 짧게 말해도 중재 수행이나 일반 반응으로 빠지지 않고 바로 검사결과가 제시되어야 한다.
+    # 이전 버전에서는 “진행하겠습니다”가 intervention_do_keywords에 먼저 걸려
+    # 처방 전 중재 수행 오류 안내로 분류되는 문제가 있었다.
+    # 따라서 이 잠금장치를 SBAR/중재 분류보다 앞에 둔다.
+    if st.session_state.get("exam_explained", False) and not st.session_state.get("labs_shown", False):
+        return "labs"
 
     # SBAR 상세 보고
     report_action_keywords = [
@@ -2123,9 +2268,11 @@ def classify_input(user_text: str) -> str:
     # ------------------------------------------------------------
     interaction_keywords = [
         "문제", "현재 문제", "가장 힘든", "가장 큰 문제",
-        "목표", "공동 목표", "통증을 줄", "통증 완화", "통증 감소",
+        "목표", "공동 목표", "치료 목표", "간호 목표", "goal", "goals", "aim", "objective",
+        "통증을 줄", "통증 완화", "통증 감소", "pain", "chest pain",
         "숨쉬기 편", "숨 쉬기 편", "호흡을 편", "호흡곤란 완화",
-        "불안", "불안 완화", "불안 감소", "안정",
+        "breathing", "shortness of breath", "dyspnea",
+        "불안", "불안 완화", "불안 감소", "안정", "anxiety", "anxious",
         "이를 위해", "방법", "다음 조치", "우선 조치",
         "산소", "산소요법", "산소 공급", "산소공급",
         "약물", "약", "약물 치료", "약물 투여",
@@ -2271,7 +2418,13 @@ def classify_input(user_text: str) -> str:
     # 검사결과 확인/임상 판단: 검사 설명이 완료된 이후에만 검사결과 확인으로 분류한다.
     labs_keywords = [
         "검사결과", "검사 결과", "검사수치", "검사 수치", "검사시행", "검사 시행",
-        "결과 확인", "결과 해석", "결과 토대로",
+        "검사 진행", "검사를 진행", "검사하겠습니다", "검사 하겠습니다", "검사 진행하겠습니다",
+        "검사 결과 확인", "검사결과 확인", "검사 결과를 확인", "검사결과를 확인",
+        "검사 결과 확인하겠습니다", "검사 결과를 확인하겠습니다", "검사결과 확인하겠습니다", "검사결과를 확인하겠습니다",
+        "결과 확인", "결과를 확인", "결과 해석", "결과 토대로",
+        "conduct the test", "conduct a test", "conduct an inspection", "conduct inspection", "we will conduct the test", "we will conduct an inspection", "proceed with the test",
+        "proceed with an inspection", "proceed with inspection", "perform the test", "run the test", "check the results", "check the test results",
+        "i will check the results", "i will check the test results", "we will check the test results",
         "심전도 결과", "혈액검사 결과", "lab",
         "환자 상태", "상태 판단", "정상 수치", "정상범위",
         "비정상 수치", "이상 수치", "의미있는 자료", "의미 있는 자료",
@@ -2280,7 +2433,7 @@ def classify_input(user_text: str) -> str:
         "심근경색", "stemi", "유추되는 질환명", "감별진단",
         "다른 질병", "다음 조치", "우선 조치", "처치 필요"
     ]
-    if st.session_state.exam_explained and has_any(text, labs_keywords):
+    if st.session_state.exam_explained and (has_any(text, labs_keywords) or is_labs_transition_expression(text)):
         return "labs"
 
     # 상호작용/중재 설명/중재 수행 분류는 위 단계 우선순위 블록에서 처리한다.
@@ -2514,7 +2667,23 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
                 "아… 심전도는 심장 상태를 보고, 피검사는 심장근육 손상 여부를 확인하는 거군요. "
                 "무섭긴 하지만 설명 들었으니까 검사 진행해 주세요…"
             ))
-            responses.append(system_message("검사 설명 및 이해와 참여 확인이 완료되었습니다. 검사결과를 확인할 수 있습니다."))
+
+            # 학생의 현재 입력 자체가 검사 시행/진행/결과 확인 의도라면
+            # 다음 입력을 기다리지 않고 바로 Step 7 검사결과를 제시한다.
+            # 예: "검사 진행하겠습니다", "검사 결과를 확인하겠습니다",
+            # "We will conduct an inspection", "execution of test", "progress of test".
+            if is_labs_transition_expression(user_text) and not st.session_state.get("labs_shown", False):
+                st.session_state.labs_shown = True
+                mark_checklist("7. 상호작용: 검사결과 기반 문제 구체화")
+                responses.append(lab_message(
+                    "검사결과\n"
+                    f"- ECG: {LAB_RESULTS['ECG']}\n"
+                    f"- Troponin I: {LAB_RESULTS['Troponin I']} (정상수치 {LAB_NORMAL_RANGES['Troponin I']})\n"
+                    f"- CK-MB: {LAB_RESULTS['CK-MB']} (정상수치 {LAB_NORMAL_RANGES['CK-MB']})"
+                ))
+                responses.append(patient_message("검사 결과가 안 좋은 건가요…? 아직 가슴이 답답하고 숨도 좀 차서 너무 걱정돼요."))
+            else:
+                responses.append(system_message("검사 설명 및 이해와 참여 확인이 완료되었습니다. 검사결과를 확인할 수 있습니다."))
         else:
             if updates:
                 st.session_state.exam_error_count = 0
