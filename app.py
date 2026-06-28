@@ -810,7 +810,7 @@ def is_vitals_request(text: str) -> bool:
 
     history_exclusion_terms = [
         "고혈압", "혈압약", "혈압 약", "고혈압 약", "고혈압 진단",
-        "혈압약 복용", "혈압 약 복용", "복용 중인 혈압약",
+        "혈압약 복용", "혈압 약 복용", "복용 중인 혈압약", "드시고 계신 약", "먹고 있는 약", "드시고계신 약", "먹고있는 약", 
         "hypertension", "hypertensive medication", "blood pressure medication",
         "blood pressure medicine", "antihypertensive", "bp medication",
     ]
