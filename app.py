@@ -1379,7 +1379,7 @@ def get_interaction_patient_response_for_current_state(updates: List[str]) -> st
     중요: 환자는 아직 설명받지 않은 목표달성 방법을 먼저 말하지 않는다.
     """
     if not st.session_state.problem_identified:
-        return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 지금 제 상태에서 무엇이 가장 문제인지 쉽게 설명해 주세요…"
+        return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 선생님, 제 증상과 검사결과를 종합하면 심장에 어떤 문제가 의심되는 건지 쉽게 설명해 주세요…"
 
     if st.session_state.problem_identified and not st.session_state.goal_set:
         return "네… 제일 힘든 건 가슴 통증이랑 숨찬 거예요. 그럼 지금 치료 목표는 무엇인지 설명해 주세요."
