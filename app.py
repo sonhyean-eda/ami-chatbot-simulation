@@ -786,6 +786,59 @@ def is_labs_transition_expression(text: str) -> bool:
     return any(phrase in raw for phrase in phrases) or any(phrase in compact for phrase in compact_phrases)
 
 
+
+
+def is_vitals_request(text: str) -> bool:
+    """명확한 활력징후 측정 요청을 인식한다.
+
+    v32/v33 수정 핵심
+    - Step 6 검사 설명 단계가 열려 있어도, 학생이 혈압/V/S/산소포화도 측정처럼
+      명확한 활력징후 확인 의도를 말하면 검사 설명 응답보다 활력징후 시스템 자료를 우선 제시한다.
+    - 단, "고혈압", "혈압약", "blood pressure medication"처럼 병력/복용약을 묻는 표현은
+      활력징후 측정으로 오인하지 않도록 제외한다.
+    """
+    raw = str(text or "").lower()
+    compact = re.sub(r"[\s\-_/.,:;!?()\[\]{}]+", "", raw)
+
+    def contains_any(terms: List[str]) -> bool:
+        compact_terms = [re.sub(r"[\s\-_/.,:;!?()\[\]{}]+", "", term.lower()) for term in terms]
+        return any(term.lower() in raw for term in terms) or any(term in compact for term in compact_terms)
+
+    history_exclusion_terms = [
+        "고혈압", "혈압약", "혈압 약", "고혈압 약", "고혈압 진단",
+        "혈압약 복용", "혈압 약 복용", "복용 중인 혈압약",
+        "hypertension", "hypertensive medication", "blood pressure medication",
+        "blood pressure medicine", "antihypertensive", "bp medication",
+    ]
+    if contains_any(history_exclusion_terms):
+        return False
+
+    strong_vitals_terms = [
+        "v/s", "vs", "vitals", "vital signs", "활력징후", "활력 징후", "바이탈",
+        "measure v/s", "measure vs", "measure vital signs", "check vital signs",
+    ]
+    if contains_any(strong_vitals_terms):
+        return True
+
+    vitals_terms = [
+        "혈압", "맥박", "심박수", "호흡수", "산소포화도", "산소 포화도", "spo2", "체온",
+        "순환상태", "순환 상태", "손가락", "손끝", "손가락에", "손끝에",
+        "blood pressure", "bp", "pulse", "heart rate", "respiratory rate",
+        "oxygen saturation", "o2 saturation", "oxygen sat", "spo2", "temperature",
+        "circulation status", "circulatory status", "circulation", "oxygen circulation",
+        "oxygen is circulating", "oxygen circulating", "circulating properly",
+        "oxygen circulating properly", "oxygen is circulating properly",
+        "oxygen is circulating properly in the body", "finger", "on my finger", "on your finger",
+        "finger probe", "finger oxygen", "pulse oximeter", "pulse ox",
+    ]
+    action_terms = [
+        "측정", "재겠습니다", "재볼", "잴게", "확인", "체크", "사정", "평가", "볼게요", "보겠습니다",
+        "measure", "check", "assess", "take", "monitor", "evaluate", "record",
+        "will see", "i'll see", "i will see", "look at", "confirm",
+    ]
+
+    return contains_any(vitals_terms) and contains_any(action_terms)
+
 def is_valid_interaction_goal_statement(text: str) -> bool:
     """상호작용 단계의 '간호목표 공유'가 실제 임상 목표인지 확인한다.
 
@@ -2183,6 +2236,16 @@ def classify_input(user_text: str) -> str:
     ]
     if st.session_state.intervention_done and has_any(text, closing_keywords):
         return "closing_therapeutic"
+
+    # ------------------------------------------------------------
+    # 명확한 활력징후 측정 요청은 Step 6 검사 설명 잠금장치보다 먼저 처리한다.
+    # 예: "Measure V/S", "혈압 측정하겠습니다", "산소포화도 측정하겠습니다",
+    #     "I will check your blood pressure", "oxygen saturation on your finger".
+    # 이렇게 해야 검사 설명이 아직 완료되지 않았더라도 학생의 실제 의도가 활력징후 확인이면
+    # [활력징후] 시스템 자료와 3단계 환자 반응이 먼저 제시된다.
+    # ------------------------------------------------------------
+    if is_vitals_request(text):
+        return "vitals"
 
     # 검사 설명은 끝났고 검사 참여 확인만 남은 경우, 짧은 진행 표현도
     # 검사 설명 단계로 보내 검사 참여 확인으로 처리한다.
