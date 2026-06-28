@@ -432,10 +432,6 @@ def get_current_step_label_for_chat() -> str:
 
 def get_step_label_for_category(category: str) -> str:
     """입력 분류 결과를 환자 대화창용 단계 라벨로 변환한다."""
-    # 이전 단계 정보 질문에 답하는 context category는 단계 역행으로 표시하지 않고 현재 단계 라벨을 유지한다.
-    if str(category).startswith("context_"):
-        return get_current_step_label_for_chat()
-
     category_step_map = {
         "intro": "1단계 초기 접촉·주호소 확인",
         "pain_assessment": "2단계 통증·동반증상 사정",
@@ -688,7 +684,7 @@ def is_ami_judgment_statement(text: str) -> bool:
 
     disease_terms = [
         "급성심근경색", "급성 심근경색", "심근경색", "심근 경색",
-        "심장마비", "심장 마비", "ami", "stemi", "심장 질환", "심장 문제", "심장질환", "심장문제", 
+        "심장마비", "심장 마비", "ami", "stemi",
         "acute myocardial infarction", "myocardial infarction", "heart attack",
     ]
     disease_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in disease_terms]
@@ -788,411 +784,6 @@ def is_labs_transition_expression(text: str) -> bool:
     ]
     compact_phrases = [re.sub(r"[\s\-_/.,:;!?()\[\]{}]+", "", phrase.lower()) for phrase in phrases]
     return any(phrase in raw for phrase in phrases) or any(phrase in compact for phrase in compact_phrases)
-
-
-
-
-def is_vitals_request(text: str) -> bool:
-    """명확한 활력징후 측정 요청을 인식한다.
-
-    v32/v33 수정 핵심
-    - Step 6 검사 설명 단계가 열려 있어도, 학생이 혈압/V/S/산소포화도 측정처럼
-      명확한 활력징후 확인 의도를 말하면 검사 설명 응답보다 활력징후 시스템 자료를 우선 제시한다.
-    - 단, "고혈압", "혈압약", "blood pressure medication"처럼 병력/복용약을 묻는 표현은
-      활력징후 측정으로 오인하지 않도록 제외한다.
-    """
-    raw = str(text or "").lower()
-    compact = re.sub(r"[\s\-_/.,:;!?()\[\]{}]+", "", raw)
-
-    def contains_any(terms: List[str]) -> bool:
-        compact_terms = [re.sub(r"[\s\-_/.,:;!?()\[\]{}]+", "", term.lower()) for term in terms]
-        return any(term.lower() in raw for term in terms) or any(term in compact for term in compact_terms)
-
-    history_exclusion_terms = [
-        "고혈압", "혈압약", "혈압 약", "고혈압 약", "고혈압 진단",
-        "혈압약 복용", "혈압 약 복용", "복용 중인 혈압약", "드시고 계신 약", "먹고 있는 약", "드시고계신 약", "먹고있는 약", 
-        "hypertension", "hypertensive medication", "blood pressure medication",
-        "blood pressure medicine", "antihypertensive", "bp medication",
-    ]
-    if contains_any(history_exclusion_terms):
-        return False
-
-    strong_vitals_terms = [
-        "v/s", "vs", "vitals", "vital signs", "활력징후", "활력 징후", "바이탈",
-        "measure v/s", "measure vs", "measure vital signs", "check vital signs",
-    ]
-    if contains_any(strong_vitals_terms):
-        return True
-
-    vitals_terms = [
-        "혈압", "맥박", "심박수", "호흡수", "산소포화도", "산소 포화도", "spo2", "체온",
-        "순환상태", "순환 상태", "손가락", "손끝", "손가락에", "손끝에",
-        "blood pressure", "bp", "pulse", "heart rate", "respiratory rate",
-        "oxygen saturation", "o2 saturation", "oxygen sat", "spo2", "temperature",
-        "circulation status", "circulatory status", "circulation", "oxygen circulation",
-        "oxygen is circulating", "oxygen circulating", "circulating properly",
-        "oxygen circulating properly", "oxygen is circulating properly",
-        "oxygen is circulating properly in the body", "finger", "on my finger", "on your finger",
-        "finger probe", "finger oxygen", "pulse oximeter", "pulse ox",
-    ]
-    action_terms = [
-        "측정", "재겠습니다", "재볼", "잴게", "확인", "체크", "사정", "평가", "볼게요", "보겠습니다",
-        "measure", "check", "assess", "take", "monitor", "evaluate", "record",
-        "will see", "i'll see", "i will see", "look at", "confirm",
-    ]
-
-    return contains_any(vitals_terms) and contains_any(action_terms)
-
-
-def contains_phrase_flex(text: str, terms: List[str]) -> bool:
-    """공백/구두점을 제거한 compact 문자열까지 함께 확인하는 보조 함수."""
-    raw = str(text or "").lower()
-    compact = re.sub(r"[\s\-_/.,:;!?()\[\]{}]+", "", raw)
-    compact_terms = [re.sub(r"[\s\-_/.,:;!?()\[\]{}]+", "", term.lower()) for term in terms]
-    return any(term.lower() in raw for term in terms) or any(term in compact for term in compact_terms)
-
-
-
-
-
-def is_direct_patient_question(text: str) -> bool:
-    """학생 발화가 환자에게 직접 정보를 묻는 질문인지 확인한다.
-
-    v42 핵심 수정
-    - Step 8/10에서 "통증 완화", "호흡곤란 감소", "아스피린 투여"처럼 설명문에
-      통증/약물 단어가 포함되어도 이전 단계 사정(context_pain/history)으로 빼앗기지 않게 한다.
-    - 실제로 환자에게 묻는 질문(어디/언제/몇 점/복용약 있나요/Are you taking 등)만
-      이전 단계 정보 질문으로 인정한다.
-    """
-    raw = str(text or "").lower().strip()
-
-    direct_question_terms = [
-        # Korean question endings / forms
-        "?", "나요", "습니까", "세요", "신가요", "있나요", "있으세요", "있습니까",
-        "어디", "언제", "몇 점", "몇점", "어떻게", "무엇", "뭐", "어떤", "얼마나",
-        "확인해도 될까요", "물어봐도 될까요",
-
-        # English direct question forms
-        "what", "where", "when", "how", "which",
-        "are you", "do you", "did you", "have you", "can you", "could you",
-        "is there", "any", "since when", "how bad", "how severe",
-    ]
-    return contains_phrase_flex(raw, direct_question_terms)
-
-
-def is_step8_active() -> bool:
-    """검사결과 확인 후, 상호작용 단계가 완료되기 전인지 확인한다."""
-    return st.session_state.get("labs_shown", False) and not st.session_state.get("interaction_completed", False)
-
-
-def is_step10_active() -> bool:
-    """처방 확인 후, 중재 수행이 완료되기 전인지 확인한다."""
-    return st.session_state.get("order_shown", False) and not st.session_state.get("intervention_done", False)
-
-
-def is_step8_or_step10_explanation_statement(text: str) -> bool:
-    """Step 8·10에서 현재 단계 설명문으로 보아야 하는 문장인지 확인한다.
-
-    예:
-    - 현재 문제는 통증, 호흡곤란, 불안입니다.
-    - 치료 목표는 통증 완화, 호흡곤란 감소, 불안 감소입니다.
-    - 산소요법, 약물치료, 심전도 재확인, 관상동맥조영술 준비가 필요합니다.
-    - Nitroglycerin relieves chest pain.
-    """
-    raw = str(text or "").lower()
-
-    explanation_terms = [
-        # Step 8: problem/goal/method statements
-        "현재 문제", "가장 큰 문제", "주요 문제", "우선 문제", "문제는",
-        "치료 목표", "간호 목표", "공동 목표", "목표는", "목표로",
-        "통증 완화", "호흡곤란 감소", "호흡 곤란 감소", "불안 감소",
-        "산소요법", "산소 요법", "약물치료", "약물 치료",
-        "심전도 재확인", "심전도 다시", "관상동맥조영술", "관상동맥 조영술", "cag",
-        "목표달성", "목표 달성", "치료 계획", "계획에 협조",
-
-        # English Step 8
-        "current problem", "biggest problem", "main problem", "priority problem",
-        "symptoms include", "symptoms are", "the problem is", "treatment goal", "goals of treatment",
-        "the goal is", "our goal", "relieve chest pain", "reduce chest pain",
-        "reduce shortness of breath", "relieve shortness of breath", "reduce anxiety",
-        "oxygen therapy", "provide oxygen therapy", "medication", "provide medication",
-        "ecg recheck", "rechecking the electrocardiogram", "recheck the electrocardiogram",
-        "electrocardiogram recheck", "cardiac ischemia", "cardiac ischaemia",
-        "coronary angiography", "preparation for coronary angiography",
-        "cag preparation", "treatment plan",
-
-        # Step 10: intervention explanation statements
-        "니트로글리세린", "아스피린", "플라빅스", "혈전 예방", "통증 완화에 도움",
-        "산소를 공급", "약물을 투여", "부작용", "불편감", "콜벨", "호출벨",
-        "nitroglycerin", "aspirin", "plavix", "clopidogrel", "blood clot", "prevent blood clots",
-        "relieves chest pain", "helps relieve", "side effect", "discomfort", "call bell",
-    ]
-    return contains_phrase_flex(raw, explanation_terms)
-def is_patient_identity_question(text: str) -> bool:
-    """현재 단계와 무관하게 환자 확인 정보를 다시 묻는지 확인한다."""
-    identity_terms = [
-        "성함", "이름", "등록번호", "등록 번호", "환자번호", "환자 번호", "팔찌", "손목밴드",
-        "본인 확인", "환자 확인", "name", "registration number", "patient number", "id band", "wristband",
-    ]
-    return contains_phrase_flex(text, identity_terms)
-
-
-
-def is_pain_info_question(text: str) -> bool:
-    """통증·동반증상 정보를 다시 묻는 직접 질문인지 확인한다.
-
-    v42 수정 핵심
-    - Step 8의 "치료 목표는 통증 완화입니다", "현재 문제는 통증과 호흡곤란입니다"는
-      통증 사정 질문이 아니라 상호작용 설명문이다.
-    - Step 10의 "니트로글리세린은 흉통 완화에 도움을 줍니다"도 통증 사정 질문이 아니다.
-    - 따라서 통증 관련 단어가 있더라도 직접 질문 형태가 아니면 False로 처리한다.
-    """
-    raw = str(text or "").lower()
-
-    # 현재 단계 설명문이면 이전 통증 사정으로 빼앗지 않는다.
-    if (is_step8_active() or is_step10_active()) and is_step8_or_step10_explanation_statement(raw):
-        return False
-
-    pain_terms = [
-        "통증", "흉통", "가슴 통증", "가슴통증", "아프", "답답", "방사통",
-        "턱", "어깨", "등", "식은땀", "호흡곤란", "숨", "불안",
-        "pain", "chest pain", "radiation", "radiating", "jaw", "shoulder", "back",
-        "sweating", "shortness of breath", "dyspnea", "anxiety",
-    ]
-
-    direct_pain_question_terms = [
-        # Korean direct assessment questions
-        "어디", "어디가", "위치", "부위", "언제", "언제부터", "시작", "몇 점", "몇점",
-        "점수", "강도", "nrs", "통증척도", "통증 척도", "방사", "퍼지", "퍼지나요",
-        "동반", "다른 증상", "식은땀", "숨차", "숨이 차", "불안하", "악화", "완화요인",
-        "악화요인", "움직이면", "쉬면", "쉬어도", "나아지나요", "심해지나요",
-
-        # English direct assessment questions
-        "where is", "where do you", "when did", "when started", "since when", "onset",
-        "pain score", "score", "nrs", "scale", "0 to 10", "how bad", "how severe",
-        "does it radiate", "is it radiating", "radiate", "associated symptoms",
-        "any other symptoms", "are you short of breath", "are you sweating",
-        "are you anxious", "what kind of pain", "what does the pain feel like",
-    ]
-
-    return (
-        contains_phrase_flex(raw, pain_terms)
-        and contains_phrase_flex(raw, direct_pain_question_terms)
-        and is_direct_patient_question(raw)
-    )
-
-
-def is_family_history_question(text: str) -> bool:
-    """가족력 질문인지 확인한다."""
-    family_terms = [
-        "가족력", "가족 중", "가족중", "심장질환 가족", "심질환 가족",
-        "아버지", "어머니", "부친", "모친",
-        "family history", "any family", "father", "mother", "parents", "heart disease in your family",
-    ]
-    return contains_phrase_flex(text, family_terms)
-
-
-def is_history_question(text: str) -> bool:
-    """병력·복용약·위험요인 질문인지 확인한다.
-
-    v36 수정 핵심
-    - "Are you taking any medicine?"와 "medication you are taking" 같은 표현도 복용약 질문으로 인식한다.
-    - "medication", "taking", "aspirin" 같은 단어 하나만으로는 history로 보내지 않는다.
-      그래야 Step 8의 "약물치료가 필요합니다" 또는 Step 10의 "아스피린을 투여합니다"가
-      병력 사정으로 잘못 분류되지 않는다.
-    - 복용약/항응고제/항혈소판제 질문은 '복용, 평소, 현재, taking, do you take, are you taking' 같은
-      복용력 질문 맥락이 함께 있을 때 우선 인식한다.
-    """
-    raw = str(text or "").lower()
-
-    # v43 안전장치: Step 8/10의 설명문은 병력 질문으로 오분류하지 않는다.
-    # 예: "We will provide oxygen therapy and medication" 또는
-    # "The patient is currently in a state of cardiac ischemia"는 복용약 질문이 아니라
-    # Step 8 목표달성 방법 설명이다.
-    if (is_step8_active() or is_step10_active()) and is_step8_or_step10_explanation_statement(raw) and not is_direct_patient_question(raw):
-        return False
-
-    # 1) 가족력은 병력 사정에 포함한다.
-    if is_family_history_question(raw):
-        return True
-
-    # 2) 복용약 질문: 한국어·영어 질문 형태를 명확히 포함한다.
-    medication_question_terms = [
-        # Korean medication-taking questions
-        "복용약", "복용 약", "복용약물", "복용 약물", "복용 중인 약", "복용중인 약",
-        "복용 중인 약물", "복용중인 약물", "현재 복용", "현재 복용 약물",
-        "평소 복용", "평소 약", "평소 드시는 약", "평소 먹는 약",
-        "드시고 계신 약", "드시고계신 약", "먹고 있는 약", "먹고있는 약",
-        "먹는 약", "약 드시", "약을 드시", "약 먹", "약을 먹", "고혈압약", "혈압약", "당뇨약",
-
-        # English medication-taking questions: medication(s) and medicine(s)
-        "are you taking any medication", "are you taking any medications",
-        "are you taking any medicine", "are you taking any medicines",
-        "do you take any medication", "do you take any medications",
-        "do you take any medicine", "do you take any medicines",
-        "are you taking medicine", "are you taking medicines",
-        "do you take medicine", "do you take medicines",
-        "do you usually take medicine", "do you usually take medicines",
-        "do you usually take medication", "do you usually take medications",
-        "medications you usually take", "medicine you usually take",
-        "medicines you usually take", "usual medication", "usual medicine", "usual medicines",
-        "home medication", "home medications", "home medicine", "home medicines",
-        "current medication", "current medications", "current medicine", "current medicines",
-        "currently taking medicine", "currently taking medicines", "currently taking medication",
-        "medication you are taking", "medications you are taking",
-        "medication you are taking.", "medications you are taking.",
-        "medicine you are taking", "medicines you are taking",
-        "medicine you are taking.", "medicines you are taking.",
-        "what medication are you taking", "what medications are you taking",
-        "what medicine are you taking", "what medicines are you taking",
-        "blood pressure medication", "blood pressure medicine",
-        "high blood pressure medication", "high blood pressure medicine",
-        "diabetes medication", "diabetes medicine",
-    ]
-    if contains_phrase_flex(raw, medication_question_terms):
-        return True
-
-    # 3) 약물명/항응고제/항혈소판제는 '복용 여부를 묻는 맥락'과 함께 있을 때만 병력으로 본다.
-    drug_terms = [
-        "항응고제", "항혈소판제", "와파린", "헤파린", "아스피린", "플라빅스", "클로피도그렐",
-        "anticoagulant", "antiplatelet", "warfarin", "heparin", "aspirin", "plavix", "clopidogrel",
-        "blood thinner", "blood thinners",
-    ]
-    medication_core_terms = [
-        "약", "약물", "medicine", "medicines", "medication", "medications", "drug", "drugs"
-    ]
-    taking_context_terms = [
-        "복용", "드셔", "드셨", "드시", "먹고", "먹는", "먹었", "평소", "현재", "최근",
-        "take", "takes", "taking", "usually", "regularly", "current", "currently", "home", "recent", "recently",
-        "are you", "do you", "did you", "have you", "any", "?",
-    ]
-    if (contains_phrase_flex(raw, drug_terms) or contains_phrase_flex(raw, medication_core_terms)) and contains_phrase_flex(raw, taking_context_terms):
-        return True
-
-    # 4) 약물 외 병력·위험요인 질문
-    general_history_terms = [
-        "과거력", "병력", "과거 병력", "기저질환", "진단받", "앓고", "질환 있으",
-        "고혈압", "당뇨", "고지혈증", "심장질환", "심질환",
-        "출혈성 질환", "출혈 질환", "출혈질환", "출혈", "피가 잘", "지혈", "혈우병",
-        "담배", "흡연", "음주", "술", "알레르기", "알러지", "식습관", "생활습관", "운동", "위험요인",
-        "past history", "medical history", "past medical history", "underlying disease",
-        "diagnosed", "suffering from", "having a disease", "hypertension", "diabetes",
-        "hyperlipidemia", "heart disease", "bleeding disorder", "bleeding disease", "hemophilia",
-        "allergy", "allergies", "smoke", "smoking", "tobacco", "drinking", "alcohol",
-        "diet", "lifestyle", "exercise", "risk factor", "risk factors",
-    ]
-    return contains_phrase_flex(raw, general_history_terms)
-
-
-def is_past_step_info_question(text: str) -> str:
-    """이전 단계 정보를 다시 묻는 질문이면 context category를 반환한다.
-
-    핵심 원칙:
-    - 단계 자체는 뒤로 돌리지 않는다.
-    - 다만 이미 지나간 단계의 환자 정보 질문에는 짧게 답하고 현재 단계 과제로 다시 유도한다.
-    - v42: Step 8·10 설명문이 context_pain/history로 잘못 빠지지 않도록,
-      해당 단계에서는 '직접 환자에게 묻는 질문'만 context로 인정한다.
-    """
-    # 중재 후 재사정 단계에서는 통증/숨/불안 질문이 재사정이어야 하므로 여기서 가로채지 않는다.
-    if st.session_state.get("intervention_done", False) and not st.session_state.get("reassessment_done", False):
-        return ""
-
-    # Step 8/10에서는 현재 단계 설명문을 우선 보호한다.
-    # 예: "치료 목표는 통증 완화입니다", "니트로글리세린은 흉통을 완화합니다"
-    if (is_step8_active() or is_step10_active()) and is_step8_or_step10_explanation_statement(text) and not is_direct_patient_question(text):
-        return ""
-
-    ahead_of_intro = (
-        st.session_state.get("intro_done", False)
-        or st.session_state.get("pain_symptom_done", False)
-        or st.session_state.get("vitals_done", False)
-        or st.session_state.get("history_risk_done", False)
-        or st.session_state.get("ami_judged", False)
-        or st.session_state.get("labs_shown", False)
-    )
-    ahead_of_pain = (
-        st.session_state.get("pain_symptom_done", False)
-        or st.session_state.get("vitals_done", False)
-        or st.session_state.get("history_risk_done", False)
-        or st.session_state.get("ami_judged", False)
-        or st.session_state.get("exam_explained", False)
-        or st.session_state.get("labs_shown", False)
-        or st.session_state.get("order_shown", False)
-    )
-    ahead_of_vitals = (
-        st.session_state.get("vitals_done", False)
-        or st.session_state.get("history_risk_done", False)
-        or st.session_state.get("ami_judged", False)
-        or st.session_state.get("exam_explained", False)
-        or st.session_state.get("labs_shown", False)
-        or st.session_state.get("order_shown", False)
-    )
-    ahead_of_history = (
-        st.session_state.get("history_risk_done", False)
-        or st.session_state.get("ami_judged", False)
-        or st.session_state.get("exam_explained", False)
-        or st.session_state.get("labs_shown", False)
-        or st.session_state.get("order_shown", False)
-    )
-
-    # Step 8/10에서는 직접 질문만 context 처리한다.
-    direct_only_mode = is_step8_active() or is_step10_active()
-
-    if ahead_of_intro and is_patient_identity_question(text) and (not direct_only_mode or is_direct_patient_question(text)):
-        return "context_identity"
-
-    if ahead_of_vitals and is_vitals_request(text):
-        # 활력징후 측정은 질문형이 아니어도 실제 수행 의도일 수 있어 context로 허용한다.
-        return "context_vitals"
-
-    if ahead_of_history and is_family_history_question(text) and (not direct_only_mode or is_direct_patient_question(text)):
-        return "context_family_history"
-
-    if ahead_of_history and is_history_question(text) and (not direct_only_mode or is_direct_patient_question(text)):
-        return "context_history"
-
-    if ahead_of_pain and is_pain_info_question(text) and (not direct_only_mode or is_direct_patient_question(text)):
-        return "context_pain"
-
-    return ""
-
-
-def get_current_step_return_prompt() -> str:
-    """이전 단계 질문에 답한 뒤, 현재 수행해야 할 과제로 부드럽게 되돌리는 문장."""
-    if st.session_state.get("order_shown", False) and not st.session_state.get("intervention_explained", False):
-        return "그런데 선생님… 지금 처방된 산소와 약이 왜 필요한지도 쉽게 설명해 주세요."
-    if st.session_state.get("order_shown", False) and st.session_state.get("intervention_explained", False) and not st.session_state.get("intervention_done", False):
-        return "그럼 설명해 주신 중재를 진행해 주세요."
-    if st.session_state.get("interaction_completed", False) and not st.session_state.get("sbar_reported", False):
-        return "의사 선생님께 제 상태를 빨리 보고해 주세요."
-    if st.session_state.get("labs_shown", False) and not st.session_state.get("interaction_completed", False):
-        return "선생님… 제 증상과 심전도·혈액검사 결과를 종합하면 어떤 문제가 의심되는지 쉽게 설명해 주세요."
-    if st.session_state.get("exam_explained", False) and not st.session_state.get("labs_shown", False):
-        return "검사 결과를 확인해 주세요."
-    if st.session_state.get("ami_judged", False) and not st.session_state.get("exam_explained", False):
-        return "그래도 정확히 확인하려면 심전도와 피검사가 왜 필요한지 쉽게 설명해 주세요."
-    if st.session_state.get("history_risk_done", False) and not st.session_state.get("ami_judged", False):
-        return "저 지금 심장 문제일 수 있는 건가요?"
-    if st.session_state.get("vitals_done", False) and not st.session_state.get("history_risk_done", False):
-        return "제 병력이나 위험요인도 확인해야 하나요?"
-    return "계속 확인해 주세요."
-
-
-def build_contextual_patient_answer(user_text: str, context_category: str) -> str:
-    """현재 단계는 유지하면서 이전 단계 정보 질문에 짧게 답하고 현재 과제로 되돌린다."""
-    if context_category == "context_identity":
-        answer = f"네… {PATIENT_INFO['name']}입니다. 등록번호는 {PATIENT_INFO['registration_number']}이고, 팔찌도 맞아요."
-    elif context_category == "context_pain":
-        answer = get_focused_pain_assessment_response(user_text)
-    elif context_category in ["context_history", "context_family_history"]:
-        answer = get_focused_history_risk_response(user_text)
-    else:
-        answer = "네… 확인해 주세요."
-
-    prompt = get_current_step_return_prompt()
-    if prompt:
-        return f"{answer}\n\n{prompt}"
-    return answer
 
 
 def is_valid_interaction_goal_statement(text: str) -> bool:
@@ -1480,7 +1071,7 @@ def is_post_intervention_vitals_request(text: str) -> bool:
     vitals_keywords = [
         "활력징후", "활력 징후", "혈압", "맥박", "호흡수", "산소포화도", "spo2", "체온",
         "vital signs", "blood pressure", "pulse", "heart rate", "respiratory rate",
-        "oxygen saturation", "temperature", "bt", "V/S을 측정한다", "V/S",
+        "oxygen saturation", "temperature", "bt"
     ]
     recheck_keywords = [
         "다시", "재측정", "재 측정", "측정", "확인", "사정", "재사정",
@@ -1531,7 +1122,7 @@ def get_interaction_patient_response_for_current_state(updates: List[str]) -> st
     중요: 환자는 아직 설명받지 않은 목표달성 방법을 먼저 말하지 않는다.
     """
     if not st.session_state.problem_identified:
-        return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 제 증상과 심전도·혈액검사 결과를 종합하면 어떤 문제가 의심되는 건지 쉽게 설명해 주세요…"
+        return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 지금 제 상태에서 무엇이 가장 문제인지 쉽게 설명해 주세요…"
 
     if st.session_state.problem_identified and not st.session_state.goal_set:
         return "네… 제일 힘든 건 가슴 통증이랑 숨찬 거예요. 그럼 지금 치료 목표는 무엇인지 설명해 주세요."
@@ -1540,7 +1131,7 @@ def get_interaction_patient_response_for_current_state(updates: List[str]) -> st
         return "제 문제와 목표는 이해했어요… 그 목표를 위해 앞으로 어떤 치료나 간호를 받게 되는지 알려주세요."
 
     if st.session_state.problem_identified and st.session_state.goal_set and st.session_state.means_explained and not st.session_state.agreement_obtained:
-        return "산소요법, 약물치료, 심전도 재확인, 관상동맥조영술 준비 가능성까지 설명해 주셔서 이해했어요… 이 치료 계획을 진행하려면 제가 협조하면 되는지 확인해 주세요."
+        return "산소요법, 약물치료, 심전도 재확인, 관상동맥조영술 준비 가능성까지 설명해 주셔서 이해했어요… 제가 협조하면 되는 건가요?"
 
     return "네… 설명해 주신 내용은 이해했어요. 말씀하신 방법에 협조하겠습니다."
 
@@ -2255,10 +1846,7 @@ def update_interaction_state(text: str) -> List[str]:
         "의미있는 자료", "의미 있는 자료", "st 상승", "트로포닌", "ck-mb",
         "심근경색", "급성심근경색", "급성 심근경색", "ami", "stemi",
         "acute myocardial infarction", "myocardial infarction", "heart attack",
-        "suspected myocardial infarction", "suspected heart attack",
-        "current problem", "biggest problem", "main problem", "priority problem",
-        "symptoms include", "symptoms are", "chest pain", "shortness of breath",
-        "dyspnea", "cold sweat", "sweating", "anxiety", "current condition"
+        "suspected myocardial infarction", "suspected heart attack"
     ]
     goal_keywords = [
         "목표", "공동 목표", "함께 목표", "우선 목표", "치료 목표", "간호 목표",
@@ -2283,10 +1871,7 @@ def update_interaction_state(text: str) -> List[str]:
         "심장 리듬 확인", "심장 리듬을 다시", "ecg monitoring", "ekg monitoring",
         "심전도 모니터링", "모니터링", "12-lead ecg re-check",
         "12-lead ecg recheck", "ecg re-check", "ecg recheck",
-        "ekg re-check", "ekg recheck",
-        "electrocardiogram recheck", "electrocardiogram re-check",
-        "recheck the electrocardiogram", "re-check the electrocardiogram",
-        "continuously recheck the electrocardiogram", "recheck electrocardiogram"
+        "ekg re-check", "ekg recheck"
     ]
     cag_method_keywords = [
         "관상동맥조영술", "관상동맥 조영술", "혈관조영술", "혈관 조영술", "조영술",
@@ -2550,53 +2135,6 @@ def classify_input(user_text: str) -> str:
         # 모호한 입력도 초기 단계로 보내지 않고 재사정 고정 반응으로 처리한다.
         return "reassessment"
 
-    # ------------------------------------------------------------
-    # 이전 단계 정보 질문 예외 처리
-    # 단계 역행 방지 잠금장치는 유지하되, 이미 지나간 단계의 환자 정보 질문에는
-    # 짧게 답한 뒤 현재 단계 과제로 다시 유도한다.
-    # 예: Step 8 중 "Are you taking any medications?" → 복용약 답변 후 Step 8 문제 확인으로 복귀.
-    # ------------------------------------------------------------
-    contextual_category = is_past_step_info_question(text)
-    if contextual_category:
-        return contextual_category
-
-    # ------------------------------------------------------------
-    # v43 핵심 수정: Step 8/10 설명문 보호
-    # Step 8에서 "oxygen therapy and medication", "currently in cardiac ischemia",
-    # "recheck the electrocardiogram", "coronary angiography"처럼 설명하는 문장은
-    # 복용약/음주 병력 질문(context_history)으로 보내면 안 된다.
-    # 따라서 병력 질문 분류보다 먼저 현재 단계 설명문으로 고정한다.
-    # ------------------------------------------------------------
-    if is_step8_active() and is_step8_or_step10_explanation_statement(text) and not is_direct_patient_question(text):
-        return "interaction_goal_setting"
-
-    if is_step10_active() and is_step8_or_step10_explanation_statement(text) and not is_direct_patient_question(text):
-        if st.session_state.get("intervention_explained", False):
-            return "intervention"
-        return "intervention_explanation"
-
-    # ------------------------------------------------------------
-    # v37 핵심 수정: 병력·복용약 질문을 단계 잠금장치보다 먼저 처리한다.
-    # - 아직 4단계 전/진행 중이면 history로 보내서 4단계 병력 사정으로 표시한다.
-    # - 이미 4단계를 지난 뒤라면 context_history로 보내서 환자는 답하지만 현재 단계 라벨은 유지한다.
-    # 예: "Are you taking any medicine?" → "혈압약은 먹고 있는데 약 이름은 잘 몰라요."
-    # ------------------------------------------------------------
-    past_history_step = (
-        st.session_state.get("history_risk_done", False)
-        or st.session_state.get("ami_judged", False)
-        or st.session_state.get("exam_explained", False)
-        or st.session_state.get("labs_shown", False)
-        or st.session_state.get("order_shown", False)
-        or st.session_state.get("intervention_done", False)
-    )
-    direct_history_question_allowed = not (is_step8_active() or is_step10_active()) or is_direct_patient_question(text)
-
-    if direct_history_question_allowed and is_family_history_question(text):
-        return "context_family_history" if past_history_step else "family_history"
-
-    if direct_history_question_allowed and is_history_question(text):
-        return "context_history" if past_history_step else "history"
-
     # 초기 접촉/환자확인 분류
     # 주의: 기존의 "정확한 확인"은 검사 필요성 설명 문장
     # (예: "정확한 확인을 위해 심전도와 혈액검사가 필요합니다")까지
@@ -2645,16 +2183,6 @@ def classify_input(user_text: str) -> str:
     ]
     if st.session_state.intervention_done and has_any(text, closing_keywords):
         return "closing_therapeutic"
-
-    # ------------------------------------------------------------
-    # 명확한 활력징후 측정 요청은 Step 6 검사 설명 잠금장치보다 먼저 처리한다.
-    # 예: "Measure V/S", "혈압 측정하겠습니다", "산소포화도 측정하겠습니다",
-    #     "I will check your blood pressure", "oxygen saturation on your finger".
-    # 이렇게 해야 검사 설명이 아직 완료되지 않았더라도 학생의 실제 의도가 활력징후 확인이면
-    # [활력징후] 시스템 자료와 3단계 환자 반응이 먼저 제시된다.
-    # ------------------------------------------------------------
-    if is_vitals_request(text):
-        return "vitals"
 
     # 검사 설명은 끝났고 검사 참여 확인만 남은 경우, 짧은 진행 표현도
     # 검사 설명 단계로 보내 검사 참여 확인으로 처리한다.
@@ -2849,16 +2377,26 @@ def classify_input(user_text: str) -> str:
         return "ami_judgment"
 
     # 병력·위험요인 확인: 활력징후보다 먼저 둔다.
-    # v35 수정
-    # - 기존 normal history_keywords는 한국어 중심이라
-    #   "Are you taking any medications?" 같은 영어 복용약 질문을 history로 분류하지 못했다.
-    # - 위에서 사용한 보강 함수 is_family_history_question(), is_history_question()을
-    #   일반 병력 단계 분류에도 동일하게 사용한다.
-    # - 따라서 병력 단계가 아직 완료되지 않은 초기 흐름에서도 영어 병력/복용약 질문을 인식한다.
-    if is_family_history_question(text):
+    family_history_keywords = [
+        "가족력", "가족 중", "심장질환 가족", "심질환 가족",
+        "아버지", "어머니", "부친", "모친"
+    ]
+    if has_any(text, family_history_keywords):
         return "family_history"
 
-    if is_history_question(text):
+    history_keywords = [
+        "과거력", "병력", "과거 병력", "조심해야 할 병력", "기저질환",
+        "고혈압", "혈압약", "혈압 약", "고혈압 약",
+        "당뇨", "고지혈증", "심장질환", "심질환",
+        "진단받", "앓고", "질환 있으",
+        "복용약", "복용약물", "현재 복용 약물", "약 드시", "약 먹", "복용중인",
+        "복용 중인", "최근 복용", "항응고제", "항응고", "항혈소판제", "항혈소판",
+        "와파린", "헤파린", "아스피린", "플라빅스", "클로피도그렐", "피 묽게", "피를 묽게",
+        "출혈성 질환", "출혈 질환", "출혈질환", "출혈", "피가 잘", "지혈", "혈우병",
+        "담배", "흡연", "음주", "술", "알레르기",
+        "식습관", "생활습관", "운동", "운동 부족", "위험요인"
+    ]
+    if has_any(text, history_keywords):
         return "history"
 
     # 검사 필요성 설명: 누적 인식
@@ -2960,20 +2498,13 @@ def get_focused_history_risk_response(text: str) -> str:
     """
     response_parts: List[str] = []
 
-    hypertension_keywords = ["고혈압", "혈압", "기저질환", "과거력", "병력", "진단", "질환", "hypertension", "high blood pressure", "underlying disease", "past medical history", "medical history", "diagnosed"]
-    medication_keywords = [
-        "약", "약물", "복용", "복용약", "혈압약", "드시", "먹고", "먹는",
-        "medication", "medications", "medicine", "medicines", "drug", "drugs",
-        "taking", "take", "usually take", "current medication", "current medications",
-        "home medication", "usual medication", "medication you are taking", "medications you are taking",
-        "medicine you are taking", "medicines you are taking",
-        "blood pressure medication", "blood pressure medicine"
-    ]
-    family_keywords = ["가족력", "가족", "아버지", "부친", "어머니", "모친", "심장마비", "심장질환", "family history", "family", "father", "mother", "parents"]
+    hypertension_keywords = ["고혈압", "혈압", "기저질환", "과거력", "병력", "진단", "질환"]
+    medication_keywords = ["약", "약물", "복용", "복용약", "혈압약", "드시", "먹고", "먹는"]
+    family_keywords = ["가족력", "가족", "아버지", "부친", "어머니", "모친", "심장마비", "심장질환"]
     smoking_keywords = ["담배", "흡연", "흡연력", "smoking", "smoke"]
-    anticoagulant_keywords = ["항응고", "항응고제", "항혈소판", "항혈소판제", "와파린", "헤파린", "아스피린", "플라빅스", "피 묽게", "피를 묽게", "anticoagulant", "antiplatelet", "warfarin", "heparin", "aspirin", "plavix", "clopidogrel", "blood thinner"]
-    bleeding_keywords = ["출혈", "출혈성", "출혈 질환", "출혈질환", "피가 잘", "지혈", "혈우병", "bleeding", "bleeding disorder", "hemophilia"]
-    allergy_keywords = ["알레르기", "알러지", "allergy", "allergies"]
+    anticoagulant_keywords = ["항응고", "항응고제", "항혈소판", "항혈소판제", "와파린", "헤파린", "아스피린", "플라빅스", "피 묽게", "피를 묽게"]
+    bleeding_keywords = ["출혈", "출혈성", "출혈 질환", "출혈질환", "피가 잘", "지혈", "혈우병"]
+    allergy_keywords = ["알레르기", "알러지", "allergy"]
     diabetes_keywords = ["당뇨", "diabetes"]
     hyperlipidemia_keywords = ["고지혈", "고지혈증", "이상지질", "콜레스테롤"]
     alcohol_keywords = ["음주", "술", "alcohol"]
@@ -3103,22 +2634,6 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
             f"- BT: {VITAL_SIGNS['BT']}"
         ))
         responses.append(patient_message("혈압이랑 맥박이 많이 높은 거예요…? 가슴도 계속 답답한데, 저 지금 위험한 상태인가요?"))
-
-    elif category == "context_vitals":
-        # 이전 단계 활력징후를 다시 확인하는 경우: 단계는 되돌리지 않고 자료만 다시 제시한 뒤 현재 단계로 유도한다.
-        responses.append(vital_message(
-            "초기 활력징후\n"
-            f"- BP: {VITAL_SIGNS['BP']}\n"
-            f"- HR: {VITAL_SIGNS['HR']}\n"
-            f"- RR: {VITAL_SIGNS['RR']}\n"
-            f"- SpO₂: {VITAL_SIGNS['SpO2']}\n"
-            f"- BT: {VITAL_SIGNS['BT']}"
-        ))
-        responses.append(patient_message(get_current_step_return_prompt()))
-
-    elif category in ["context_identity", "context_pain", "context_history", "context_family_history"]:
-        # 이전 단계 질문에 답하되, checklist나 현재 진행 단계는 뒤로 돌리지 않는다.
-        responses.append(patient_message(build_contextual_patient_answer(user_text, category)))
 
     elif category == "family_history":
         st.session_state.history_risk_done = True
