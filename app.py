@@ -895,27 +895,86 @@ def is_family_history_question(text: str) -> bool:
 def is_history_question(text: str) -> bool:
     """병력·복용약·위험요인 질문인지 확인한다.
 
-    Step 8 이후에도 '평소 복용약이 있나요?' 같은 실제 임상 질문에는 답할 수 있게 하기 위한 함수이다.
-    단, Step 8의 '약물치료가 필요합니다' 또는 Step 10의 '약물 설명'과 구분하기 위해
-    '복용/평소/taking/do you take'처럼 과거력·복용력 맥락을 우선한다.
+    v36 수정 핵심
+    - "Are you taking any medicine?"와 "medication you are taking" 같은 표현도 복용약 질문으로 인식한다.
+    - "medication", "taking", "aspirin" 같은 단어 하나만으로는 history로 보내지 않는다.
+      그래야 Step 8의 "약물치료가 필요합니다" 또는 Step 10의 "아스피린을 투여합니다"가
+      병력 사정으로 잘못 분류되지 않는다.
+    - 복용약/항응고제/항혈소판제 질문은 '복용, 평소, 현재, taking, do you take, are you taking' 같은
+      복용력 질문 맥락이 함께 있을 때 우선 인식한다.
     """
-    explicit_history_terms = [
+    raw = str(text or "").lower()
+
+    # 1) 가족력은 병력 사정에 포함한다.
+    if is_family_history_question(raw):
+        return True
+
+    # 2) 복용약 질문: 한국어·영어 질문 형태를 명확히 포함한다.
+    medication_question_terms = [
+        # Korean medication-taking questions
+        "복용약", "복용 약", "복용약물", "복용 약물", "복용 중인 약", "복용중인 약",
+        "복용 중인 약물", "복용중인 약물", "현재 복용", "현재 복용 약물",
+        "평소 복용", "평소 약", "평소 드시는 약", "평소 먹는 약",
+        "드시고 계신 약", "드시고계신 약", "먹고 있는 약", "먹고있는 약",
+        "먹는 약", "약 드시", "약을 드시", "약 먹", "약을 먹", "고혈압약", "혈압약", "당뇨약",
+
+        # English medication-taking questions: medication(s) and medicine(s)
+        "are you taking any medication", "are you taking any medications",
+        "are you taking any medicine", "are you taking any medicines",
+        "do you take any medication", "do you take any medications",
+        "do you take any medicine", "do you take any medicines",
+        "are you taking medicine", "are you taking medicines",
+        "do you take medicine", "do you take medicines",
+        "do you usually take medicine", "do you usually take medicines",
+        "do you usually take medication", "do you usually take medications",
+        "medications you usually take", "medicine you usually take",
+        "medicines you usually take", "usual medication", "usual medicine", "usual medicines",
+        "home medication", "home medications", "home medicine", "home medicines",
+        "current medication", "current medications", "current medicine", "current medicines",
+        "currently taking medicine", "currently taking medicines", "currently taking medication",
+        "medication you are taking", "medications you are taking",
+        "medication you are taking.", "medications you are taking.",
+        "medicine you are taking", "medicines you are taking",
+        "medicine you are taking.", "medicines you are taking.",
+        "what medication are you taking", "what medications are you taking",
+        "what medicine are you taking", "what medicines are you taking",
+        "blood pressure medication", "blood pressure medicine",
+        "high blood pressure medication", "high blood pressure medicine",
+        "diabetes medication", "diabetes medicine",
+    ]
+    if contains_phrase_flex(raw, medication_question_terms):
+        return True
+
+    # 3) 약물명/항응고제/항혈소판제는 '복용 여부를 묻는 맥락'과 함께 있을 때만 병력으로 본다.
+    drug_terms = [
+        "항응고제", "항혈소판제", "와파린", "헤파린", "아스피린", "플라빅스", "클로피도그렐",
+        "anticoagulant", "antiplatelet", "warfarin", "heparin", "aspirin", "plavix", "clopidogrel",
+        "blood thinner", "blood thinners",
+    ]
+    medication_core_terms = [
+        "약", "약물", "medicine", "medicines", "medication", "medications", "drug", "drugs"
+    ]
+    taking_context_terms = [
+        "복용", "드셔", "드셨", "드시", "먹고", "먹는", "먹었", "평소", "현재", "최근",
+        "take", "takes", "taking", "usually", "regularly", "current", "currently", "home", "recent", "recently",
+        "are you", "do you", "did you", "have you", "any", "?",
+    ]
+    if (contains_phrase_flex(raw, drug_terms) or contains_phrase_flex(raw, medication_core_terms)) and contains_phrase_flex(raw, taking_context_terms):
+        return True
+
+    # 4) 약물 외 병력·위험요인 질문
+    general_history_terms = [
         "과거력", "병력", "과거 병력", "기저질환", "진단받", "앓고", "질환 있으",
         "고혈압", "당뇨", "고지혈증", "심장질환", "심질환",
-        "복용약", "복용 약", "복용약물", "현재 복용 약물", "복용 중", "복용중", "드시고 계신 약", "먹고 있는 약", "드시고계신 약", "먹고있는 약",
-        "약 드시", "약 먹", "먹는 약", "평소 약", "평소 복용", "고혈압약", "혈압약", "당뇨약",
-        "항응고제", "항혈소판제", "와파린", "헤파린", "아스피린", "플라빅스", "클로피도그렐",
         "출혈성 질환", "출혈 질환", "출혈질환", "출혈", "피가 잘", "지혈", "혈우병",
-        "담배", "흡연", "음주", "술", "알레르기", "식습관", "생활습관", "운동", "위험요인",
-        "past medical history", "medical history", "underlying disease", "hypertension", "diabetes",
-        "hyperlipidemia", "diagnosed", "medications you usually take", "usual medication", "home medication",
-        "current medication", "current medications", "taking any medications", "take any medications",
-        "are you taking", "do you take", "usually take", "blood pressure medication", "blood pressure medicine",
-        "diabetes medication", "anticoagulant", "antiplatelet", "bleeding disorder", "allergy", "allergies",
-        "smoke", "smoking", "alcohol", "exercise", "risk factor", "risk factors",
+        "담배", "흡연", "음주", "술", "알레르기", "알러지", "식습관", "생활습관", "운동", "위험요인",
+        "past history", "medical history", "past medical history", "underlying disease",
+        "diagnosed", "suffering from", "having a disease", "hypertension", "diabetes",
+        "hyperlipidemia", "heart disease", "bleeding disorder", "bleeding disease", "hemophilia",
+        "allergy", "allergies", "smoke", "smoking", "tobacco", "drinking", "alcohol",
+        "diet", "lifestyle", "exercise", "risk factor", "risk factors",
     ]
-    return contains_phrase_flex(text, explicit_history_terms) or is_family_history_question(text)
-
+    return contains_phrase_flex(raw, general_history_terms)
 
 def is_past_step_info_question(text: str) -> str:
     """이전 단계 정보를 다시 묻는 질문이면 context category를 반환한다.
@@ -2343,6 +2402,26 @@ def classify_input(user_text: str) -> str:
     if contextual_category:
         return contextual_category
 
+    # ------------------------------------------------------------
+    # v37 핵심 수정: 병력·복용약 질문을 단계 잠금장치보다 먼저 처리한다.
+    # - 아직 4단계 전/진행 중이면 history로 보내서 4단계 병력 사정으로 표시한다.
+    # - 이미 4단계를 지난 뒤라면 context_history로 보내서 환자는 답하지만 현재 단계 라벨은 유지한다.
+    # 예: "Are you taking any medicine?" → "혈압약은 먹고 있는데 약 이름은 잘 몰라요."
+    # ------------------------------------------------------------
+    past_history_step = (
+        st.session_state.get("history_risk_done", False)
+        or st.session_state.get("ami_judged", False)
+        or st.session_state.get("exam_explained", False)
+        or st.session_state.get("labs_shown", False)
+        or st.session_state.get("order_shown", False)
+        or st.session_state.get("intervention_done", False)
+    )
+    if is_family_history_question(text):
+        return "context_family_history" if past_history_step else "family_history"
+
+    if is_history_question(text):
+        return "context_history" if past_history_step else "history"
+
     # 초기 접촉/환자확인 분류
     # 주의: 기존의 "정확한 확인"은 검사 필요성 설명 문장
     # (예: "정확한 확인을 위해 심전도와 혈액검사가 필요합니다")까지
@@ -2595,26 +2674,16 @@ def classify_input(user_text: str) -> str:
         return "ami_judgment"
 
     # 병력·위험요인 확인: 활력징후보다 먼저 둔다.
-    family_history_keywords = [
-        "가족력", "가족 중", "심장질환 가족", "심질환 가족",
-        "아버지", "어머니", "부친", "모친"
-    ]
-    if has_any(text, family_history_keywords):
+    # v35 수정
+    # - 기존 normal history_keywords는 한국어 중심이라
+    #   "Are you taking any medications?" 같은 영어 복용약 질문을 history로 분류하지 못했다.
+    # - 위에서 사용한 보강 함수 is_family_history_question(), is_history_question()을
+    #   일반 병력 단계 분류에도 동일하게 사용한다.
+    # - 따라서 병력 단계가 아직 완료되지 않은 초기 흐름에서도 영어 병력/복용약 질문을 인식한다.
+    if is_family_history_question(text):
         return "family_history"
 
-    history_keywords = [
-        "과거력", "병력", "과거 병력", "조심해야 할 병력", "기저질환",
-        "고혈압", "혈압약", "혈압 약", "고혈압 약",
-        "당뇨", "고지혈증", "심장질환", "심질환",
-        "진단받", "앓고", "질환 있으",
-        "복용약", "복용약물", "현재 복용 약물", "약 드시", "약 먹", "복용중인",
-        "복용 중인", "최근 복용", "항응고제", "항응고", "항혈소판제", "항혈소판",
-        "와파린", "헤파린", "아스피린", "플라빅스", "클로피도그렐", "피 묽게", "피를 묽게",
-        "출혈성 질환", "출혈 질환", "출혈질환", "출혈", "피가 잘", "지혈", "혈우병",
-        "담배", "흡연", "음주", "술", "알레르기",
-        "식습관", "생활습관", "운동", "운동 부족", "위험요인"
-    ]
-    if has_any(text, history_keywords):
+    if is_history_question(text):
         return "history"
 
     # 검사 필요성 설명: 누적 인식
@@ -2716,13 +2785,20 @@ def get_focused_history_risk_response(text: str) -> str:
     """
     response_parts: List[str] = []
 
-    hypertension_keywords = ["고혈압", "혈압", "기저질환", "과거력", "병력", "진단", "질환"]
-    medication_keywords = ["약", "약물", "복용", "복용약", "혈압약", "드시", "먹고", "먹는"]
-    family_keywords = ["가족력", "가족", "아버지", "부친", "어머니", "모친", "심장마비", "심장질환"]
+    hypertension_keywords = ["고혈압", "혈압", "기저질환", "과거력", "병력", "진단", "질환", "hypertension", "high blood pressure", "underlying disease", "past medical history", "medical history", "diagnosed"]
+    medication_keywords = [
+        "약", "약물", "복용", "복용약", "혈압약", "드시", "먹고", "먹는",
+        "medication", "medications", "medicine", "medicines", "drug", "drugs",
+        "taking", "take", "usually take", "current medication", "current medications",
+        "home medication", "usual medication", "medication you are taking", "medications you are taking",
+        "medicine you are taking", "medicines you are taking",
+        "blood pressure medication", "blood pressure medicine"
+    ]
+    family_keywords = ["가족력", "가족", "아버지", "부친", "어머니", "모친", "심장마비", "심장질환", "family history", "family", "father", "mother", "parents"]
     smoking_keywords = ["담배", "흡연", "흡연력", "smoking", "smoke"]
-    anticoagulant_keywords = ["항응고", "항응고제", "항혈소판", "항혈소판제", "와파린", "헤파린", "아스피린", "플라빅스", "피 묽게", "피를 묽게"]
-    bleeding_keywords = ["출혈", "출혈성", "출혈 질환", "출혈질환", "피가 잘", "지혈", "혈우병"]
-    allergy_keywords = ["알레르기", "알러지", "allergy"]
+    anticoagulant_keywords = ["항응고", "항응고제", "항혈소판", "항혈소판제", "와파린", "헤파린", "아스피린", "플라빅스", "피 묽게", "피를 묽게", "anticoagulant", "antiplatelet", "warfarin", "heparin", "aspirin", "plavix", "clopidogrel", "blood thinner"]
+    bleeding_keywords = ["출혈", "출혈성", "출혈 질환", "출혈질환", "피가 잘", "지혈", "혈우병", "bleeding", "bleeding disorder", "hemophilia"]
+    allergy_keywords = ["알레르기", "알러지", "allergy", "allergies"]
     diabetes_keywords = ["당뇨", "diabetes"]
     hyperlipidemia_keywords = ["고지혈", "고지혈증", "이상지질", "콜레스테롤"]
     alcohol_keywords = ["음주", "술", "alcohol"]
