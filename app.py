@@ -852,6 +852,79 @@ def contains_phrase_flex(text: str, terms: List[str]) -> bool:
     return any(term.lower() in raw for term in terms) or any(term in compact for term in compact_terms)
 
 
+
+
+
+def is_direct_patient_question(text: str) -> bool:
+    """학생 발화가 환자에게 직접 정보를 묻는 질문인지 확인한다.
+
+    v42 핵심 수정
+    - Step 8/10에서 "통증 완화", "호흡곤란 감소", "아스피린 투여"처럼 설명문에
+      통증/약물 단어가 포함되어도 이전 단계 사정(context_pain/history)으로 빼앗기지 않게 한다.
+    - 실제로 환자에게 묻는 질문(어디/언제/몇 점/복용약 있나요/Are you taking 등)만
+      이전 단계 정보 질문으로 인정한다.
+    """
+    raw = str(text or "").lower().strip()
+
+    direct_question_terms = [
+        # Korean question endings / forms
+        "?", "나요", "습니까", "세요", "신가요", "있나요", "있으세요", "있습니까",
+        "어디", "언제", "몇 점", "몇점", "어떻게", "무엇", "뭐", "어떤", "얼마나",
+        "확인해도 될까요", "물어봐도 될까요",
+
+        # English direct question forms
+        "what", "where", "when", "how", "which",
+        "are you", "do you", "did you", "have you", "can you", "could you",
+        "is there", "any", "since when", "how bad", "how severe",
+    ]
+    return contains_phrase_flex(raw, direct_question_terms)
+
+
+def is_step8_active() -> bool:
+    """검사결과 확인 후, 상호작용 단계가 완료되기 전인지 확인한다."""
+    return st.session_state.get("labs_shown", False) and not st.session_state.get("interaction_completed", False)
+
+
+def is_step10_active() -> bool:
+    """처방 확인 후, 중재 수행이 완료되기 전인지 확인한다."""
+    return st.session_state.get("order_shown", False) and not st.session_state.get("intervention_done", False)
+
+
+def is_step8_or_step10_explanation_statement(text: str) -> bool:
+    """Step 8·10에서 현재 단계 설명문으로 보아야 하는 문장인지 확인한다.
+
+    예:
+    - 현재 문제는 통증, 호흡곤란, 불안입니다.
+    - 치료 목표는 통증 완화, 호흡곤란 감소, 불안 감소입니다.
+    - 산소요법, 약물치료, 심전도 재확인, 관상동맥조영술 준비가 필요합니다.
+    - Nitroglycerin relieves chest pain.
+    """
+    raw = str(text or "").lower()
+
+    explanation_terms = [
+        # Step 8: problem/goal/method statements
+        "현재 문제", "가장 큰 문제", "주요 문제", "우선 문제", "문제는",
+        "치료 목표", "간호 목표", "공동 목표", "목표는", "목표로",
+        "통증 완화", "호흡곤란 감소", "호흡 곤란 감소", "불안 감소",
+        "산소요법", "산소 요법", "약물치료", "약물 치료",
+        "심전도 재확인", "심전도 다시", "관상동맥조영술", "관상동맥 조영술", "cag",
+        "목표달성", "목표 달성", "치료 계획", "계획에 협조",
+
+        # English Step 8
+        "current problem", "biggest problem", "main problem", "priority problem",
+        "symptoms include", "symptoms are", "the problem is", "treatment goal", "goals of treatment",
+        "the goal is", "our goal", "relieve chest pain", "reduce chest pain",
+        "reduce shortness of breath", "relieve shortness of breath", "reduce anxiety",
+        "oxygen therapy", "medication", "ecg recheck", "rechecking the electrocardiogram",
+        "coronary angiography", "cag preparation", "treatment plan",
+
+        # Step 10: intervention explanation statements
+        "니트로글리세린", "아스피린", "플라빅스", "혈전 예방", "통증 완화에 도움",
+        "산소를 공급", "약물을 투여", "부작용", "불편감", "콜벨", "호출벨",
+        "nitroglycerin", "aspirin", "plavix", "clopidogrel", "blood clot", "prevent blood clots",
+        "relieves chest pain", "helps relieve", "side effect", "discomfort", "call bell",
+    ]
+    return contains_phrase_flex(raw, explanation_terms)
 def is_patient_identity_question(text: str) -> bool:
     """현재 단계와 무관하게 환자 확인 정보를 다시 묻는지 확인한다."""
     identity_terms = [
@@ -861,25 +934,49 @@ def is_patient_identity_question(text: str) -> bool:
     return contains_phrase_flex(text, identity_terms)
 
 
-def is_pain_info_question(text: str) -> bool:
-    """통증·동반증상 정보를 다시 묻는 질문인지 확인한다.
 
-    단순히 'chest pain is the problem'처럼 문제를 설명하는 문장이 아니라,
-    위치·시작 시점·점수·방사통·동반증상을 묻는 표현일 때만 True로 한다.
+def is_pain_info_question(text: str) -> bool:
+    """통증·동반증상 정보를 다시 묻는 직접 질문인지 확인한다.
+
+    v42 수정 핵심
+    - Step 8의 "치료 목표는 통증 완화입니다", "현재 문제는 통증과 호흡곤란입니다"는
+      통증 사정 질문이 아니라 상호작용 설명문이다.
+    - Step 10의 "니트로글리세린은 흉통 완화에 도움을 줍니다"도 통증 사정 질문이 아니다.
+    - 따라서 통증 관련 단어가 있더라도 직접 질문 형태가 아니면 False로 처리한다.
     """
+    raw = str(text or "").lower()
+
+    # 현재 단계 설명문이면 이전 통증 사정으로 빼앗지 않는다.
+    if (is_step8_active() or is_step10_active()) and is_step8_or_step10_explanation_statement(raw):
+        return False
+
     pain_terms = [
         "통증", "흉통", "가슴 통증", "가슴통증", "아프", "답답", "방사통",
         "턱", "어깨", "등", "식은땀", "호흡곤란", "숨", "불안",
         "pain", "chest pain", "radiation", "radiating", "jaw", "shoulder", "back",
         "sweating", "shortness of breath", "dyspnea", "anxiety",
     ]
-    question_terms = [
-        "어디", "언제", "부터", "몇 점", "몇점", "양상", "어떻게", "퍼지", "동반", "심해", "완화",
-        "location", "where", "when", "since when", "onset", "score", "nrs", "scale",
-        "radiate", "radiating", "associated", "symptoms", "how bad", "how severe", "what kind",
-        "?",
+
+    direct_pain_question_terms = [
+        # Korean direct assessment questions
+        "어디", "어디가", "위치", "부위", "언제", "언제부터", "시작", "몇 점", "몇점",
+        "점수", "강도", "nrs", "통증척도", "통증 척도", "방사", "퍼지", "퍼지나요",
+        "동반", "다른 증상", "식은땀", "숨차", "숨이 차", "불안하", "악화", "완화요인",
+        "악화요인", "움직이면", "쉬면", "쉬어도", "나아지나요", "심해지나요",
+
+        # English direct assessment questions
+        "where is", "where do you", "when did", "when started", "since when", "onset",
+        "pain score", "score", "nrs", "scale", "0 to 10", "how bad", "how severe",
+        "does it radiate", "is it radiating", "radiate", "associated symptoms",
+        "any other symptoms", "are you short of breath", "are you sweating",
+        "are you anxious", "what kind of pain", "what does the pain feel like",
     ]
-    return contains_phrase_flex(text, pain_terms) and contains_phrase_flex(text, question_terms)
+
+    return (
+        contains_phrase_flex(raw, pain_terms)
+        and contains_phrase_flex(raw, direct_pain_question_terms)
+        and is_direct_patient_question(raw)
+    )
 
 
 def is_family_history_question(text: str) -> bool:
@@ -976,32 +1073,77 @@ def is_history_question(text: str) -> bool:
     ]
     return contains_phrase_flex(raw, general_history_terms)
 
+
 def is_past_step_info_question(text: str) -> str:
     """이전 단계 정보를 다시 묻는 질문이면 context category를 반환한다.
 
     핵심 원칙:
     - 단계 자체는 뒤로 돌리지 않는다.
     - 다만 이미 지나간 단계의 환자 정보 질문에는 짧게 답하고 현재 단계 과제로 다시 유도한다.
+    - v42: Step 8·10 설명문이 context_pain/history로 잘못 빠지지 않도록,
+      해당 단계에서는 '직접 환자에게 묻는 질문'만 context로 인정한다.
     """
     # 중재 후 재사정 단계에서는 통증/숨/불안 질문이 재사정이어야 하므로 여기서 가로채지 않는다.
     if st.session_state.get("intervention_done", False) and not st.session_state.get("reassessment_done", False):
         return ""
 
-    ahead_of_intro = st.session_state.get("intro_done", False) or st.session_state.get("pain_symptom_done", False) or st.session_state.get("vitals_done", False) or st.session_state.get("history_risk_done", False) or st.session_state.get("ami_judged", False) or st.session_state.get("labs_shown", False)
-    ahead_of_pain = st.session_state.get("pain_symptom_done", False) or st.session_state.get("vitals_done", False) or st.session_state.get("history_risk_done", False) or st.session_state.get("ami_judged", False) or st.session_state.get("exam_explained", False) or st.session_state.get("labs_shown", False) or st.session_state.get("order_shown", False)
-    ahead_of_vitals = st.session_state.get("vitals_done", False) or st.session_state.get("history_risk_done", False) or st.session_state.get("ami_judged", False) or st.session_state.get("exam_explained", False) or st.session_state.get("labs_shown", False) or st.session_state.get("order_shown", False)
-    ahead_of_history = st.session_state.get("history_risk_done", False) or st.session_state.get("ami_judged", False) or st.session_state.get("exam_explained", False) or st.session_state.get("labs_shown", False) or st.session_state.get("order_shown", False)
+    # Step 8/10에서는 현재 단계 설명문을 우선 보호한다.
+    # 예: "치료 목표는 통증 완화입니다", "니트로글리세린은 흉통을 완화합니다"
+    if (is_step8_active() or is_step10_active()) and is_step8_or_step10_explanation_statement(text) and not is_direct_patient_question(text):
+        return ""
 
-    if ahead_of_intro and is_patient_identity_question(text):
+    ahead_of_intro = (
+        st.session_state.get("intro_done", False)
+        or st.session_state.get("pain_symptom_done", False)
+        or st.session_state.get("vitals_done", False)
+        or st.session_state.get("history_risk_done", False)
+        or st.session_state.get("ami_judged", False)
+        or st.session_state.get("labs_shown", False)
+    )
+    ahead_of_pain = (
+        st.session_state.get("pain_symptom_done", False)
+        or st.session_state.get("vitals_done", False)
+        or st.session_state.get("history_risk_done", False)
+        or st.session_state.get("ami_judged", False)
+        or st.session_state.get("exam_explained", False)
+        or st.session_state.get("labs_shown", False)
+        or st.session_state.get("order_shown", False)
+    )
+    ahead_of_vitals = (
+        st.session_state.get("vitals_done", False)
+        or st.session_state.get("history_risk_done", False)
+        or st.session_state.get("ami_judged", False)
+        or st.session_state.get("exam_explained", False)
+        or st.session_state.get("labs_shown", False)
+        or st.session_state.get("order_shown", False)
+    )
+    ahead_of_history = (
+        st.session_state.get("history_risk_done", False)
+        or st.session_state.get("ami_judged", False)
+        or st.session_state.get("exam_explained", False)
+        or st.session_state.get("labs_shown", False)
+        or st.session_state.get("order_shown", False)
+    )
+
+    # Step 8/10에서는 직접 질문만 context 처리한다.
+    direct_only_mode = is_step8_active() or is_step10_active()
+
+    if ahead_of_intro and is_patient_identity_question(text) and (not direct_only_mode or is_direct_patient_question(text)):
         return "context_identity"
-    if ahead_of_pain and is_pain_info_question(text):
-        return "context_pain"
+
     if ahead_of_vitals and is_vitals_request(text):
+        # 활력징후 측정은 질문형이 아니어도 실제 수행 의도일 수 있어 context로 허용한다.
         return "context_vitals"
-    if ahead_of_history and is_family_history_question(text):
+
+    if ahead_of_history and is_family_history_question(text) and (not direct_only_mode or is_direct_patient_question(text)):
         return "context_family_history"
-    if ahead_of_history and is_history_question(text):
+
+    if ahead_of_history and is_history_question(text) and (not direct_only_mode or is_direct_patient_question(text)):
         return "context_history"
+
+    if ahead_of_pain and is_pain_info_question(text) and (not direct_only_mode or is_direct_patient_question(text)):
+        return "context_pain"
+
     return ""
 
 
@@ -1014,7 +1156,7 @@ def get_current_step_return_prompt() -> str:
     if st.session_state.get("interaction_completed", False) and not st.session_state.get("sbar_reported", False):
         return "의사 선생님께 제 상태를 빨리 보고해 주세요."
     if st.session_state.get("labs_shown", False) and not st.session_state.get("interaction_completed", False):
-        return "그런데 선생님… 검사결과가 안 좋다고 하니 지금 제 상태에서 무엇이 가장 문제인지 쉽게 설명해 주세요."
+        return "선생님… 제 증상과 심전도·혈액검사 결과를 종합하면 어떤 문제가 의심되는지 쉽게 설명해 주세요."
     if st.session_state.get("exam_explained", False) and not st.session_state.get("labs_shown", False):
         return "검사 결과를 확인해 주세요."
     if st.session_state.get("ami_judged", False) and not st.session_state.get("exam_explained", False):
@@ -1379,7 +1521,7 @@ def get_interaction_patient_response_for_current_state(updates: List[str]) -> st
     중요: 환자는 아직 설명받지 않은 목표달성 방법을 먼저 말하지 않는다.
     """
     if not st.session_state.problem_identified:
-        return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 선생님, 제 증상과 검사결과를 종합하면 심장에 어떤 문제가 의심되는 건지 쉽게 설명해 주세요…"
+        return "선생님… 검사 결과가 안 좋다고 하니 너무 불안해요. 제 증상과 심전도·혈액검사 결과를 종합하면 어떤 문제가 의심되는 건지 쉽게 설명해 주세요…"
 
     if st.session_state.problem_identified and not st.session_state.goal_set:
         return "네… 제일 힘든 건 가슴 통증이랑 숨찬 거예요. 그럼 지금 치료 목표는 무엇인지 설명해 주세요."
@@ -2103,7 +2245,10 @@ def update_interaction_state(text: str) -> List[str]:
         "의미있는 자료", "의미 있는 자료", "st 상승", "트로포닌", "ck-mb",
         "심근경색", "급성심근경색", "급성 심근경색", "ami", "stemi",
         "acute myocardial infarction", "myocardial infarction", "heart attack",
-        "suspected myocardial infarction", "suspected heart attack"
+        "suspected myocardial infarction", "suspected heart attack",
+        "current problem", "biggest problem", "main problem", "priority problem",
+        "symptoms include", "symptoms are", "chest pain", "shortness of breath",
+        "dyspnea", "cold sweat", "sweating", "anxiety", "current condition"
     ]
     goal_keywords = [
         "목표", "공동 목표", "함께 목표", "우선 목표", "치료 목표", "간호 목표",
