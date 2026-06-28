@@ -1071,7 +1071,7 @@ def is_post_intervention_vitals_request(text: str) -> bool:
     vitals_keywords = [
         "활력징후", "활력 징후", "혈압", "맥박", "호흡수", "산소포화도", "spo2", "체온",
         "vital signs", "blood pressure", "pulse", "heart rate", "respiratory rate",
-        "oxygen saturation", "temperature", "bt"
+        "oxygen saturation", "temperature", "bt", "V/S을 측정한다", "V/S",
     ]
     recheck_keywords = [
         "다시", "재측정", "재 측정", "측정", "확인", "사정", "재사정",
