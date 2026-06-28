@@ -688,7 +688,7 @@ def is_ami_judgment_statement(text: str) -> bool:
 
     disease_terms = [
         "급성심근경색", "급성 심근경색", "심근경색", "심근 경색",
-        "심장마비", "심장 마비", "ami", "stemi",
+        "심장마비", "심장 마비", "ami", "stemi", "심장 질환", "심장 문제", "심장질환", "심장문제", 
         "acute myocardial infarction", "myocardial infarction", "heart attack",
     ]
     disease_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in disease_terms]
