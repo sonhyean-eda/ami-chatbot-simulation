@@ -915,8 +915,11 @@ def is_step8_or_step10_explanation_statement(text: str) -> bool:
         "symptoms include", "symptoms are", "the problem is", "treatment goal", "goals of treatment",
         "the goal is", "our goal", "relieve chest pain", "reduce chest pain",
         "reduce shortness of breath", "relieve shortness of breath", "reduce anxiety",
-        "oxygen therapy", "medication", "ecg recheck", "rechecking the electrocardiogram",
-        "coronary angiography", "cag preparation", "treatment plan",
+        "oxygen therapy", "provide oxygen therapy", "medication", "provide medication",
+        "ecg recheck", "rechecking the electrocardiogram", "recheck the electrocardiogram",
+        "electrocardiogram recheck", "cardiac ischemia", "cardiac ischaemia",
+        "coronary angiography", "preparation for coronary angiography",
+        "cag preparation", "treatment plan",
 
         # Step 10: intervention explanation statements
         "니트로글리세린", "아스피린", "플라빅스", "혈전 예방", "통증 완화에 도움",
@@ -1001,6 +1004,13 @@ def is_history_question(text: str) -> bool:
       복용력 질문 맥락이 함께 있을 때 우선 인식한다.
     """
     raw = str(text or "").lower()
+
+    # v43 안전장치: Step 8/10의 설명문은 병력 질문으로 오분류하지 않는다.
+    # 예: "We will provide oxygen therapy and medication" 또는
+    # "The patient is currently in a state of cardiac ischemia"는 복용약 질문이 아니라
+    # Step 8 목표달성 방법 설명이다.
+    if (is_step8_active() or is_step10_active()) and is_step8_or_step10_explanation_statement(raw) and not is_direct_patient_question(raw):
+        return False
 
     # 1) 가족력은 병력 사정에 포함한다.
     if is_family_history_question(raw):
@@ -1530,7 +1540,7 @@ def get_interaction_patient_response_for_current_state(updates: List[str]) -> st
         return "제 문제와 목표는 이해했어요… 그 목표를 위해 앞으로 어떤 치료나 간호를 받게 되는지 알려주세요."
 
     if st.session_state.problem_identified and st.session_state.goal_set and st.session_state.means_explained and not st.session_state.agreement_obtained:
-        return "산소요법, 약물치료, 심전도 재확인, 관상동맥조영술 준비 가능성까지 설명해 주셔서 이해했어요… 제가 협조하면 되는 건가요?"
+        return "산소요법, 약물치료, 심전도 재확인, 관상동맥조영술 준비 가능성까지 설명해 주셔서 이해했어요… 이 치료 계획을 진행하려면 제가 협조하면 되는지 확인해 주세요."
 
     return "네… 설명해 주신 내용은 이해했어요. 말씀하신 방법에 협조하겠습니다."
 
@@ -2273,7 +2283,10 @@ def update_interaction_state(text: str) -> List[str]:
         "심장 리듬 확인", "심장 리듬을 다시", "ecg monitoring", "ekg monitoring",
         "심전도 모니터링", "모니터링", "12-lead ecg re-check",
         "12-lead ecg recheck", "ecg re-check", "ecg recheck",
-        "ekg re-check", "ekg recheck"
+        "ekg re-check", "ekg recheck",
+        "electrocardiogram recheck", "electrocardiogram re-check",
+        "recheck the electrocardiogram", "re-check the electrocardiogram",
+        "continuously recheck the electrocardiogram", "recheck electrocardiogram"
     ]
     cag_method_keywords = [
         "관상동맥조영술", "관상동맥 조영술", "혈관조영술", "혈관 조영술", "조영술",
@@ -2548,6 +2561,21 @@ def classify_input(user_text: str) -> str:
         return contextual_category
 
     # ------------------------------------------------------------
+    # v43 핵심 수정: Step 8/10 설명문 보호
+    # Step 8에서 "oxygen therapy and medication", "currently in cardiac ischemia",
+    # "recheck the electrocardiogram", "coronary angiography"처럼 설명하는 문장은
+    # 복용약/음주 병력 질문(context_history)으로 보내면 안 된다.
+    # 따라서 병력 질문 분류보다 먼저 현재 단계 설명문으로 고정한다.
+    # ------------------------------------------------------------
+    if is_step8_active() and is_step8_or_step10_explanation_statement(text) and not is_direct_patient_question(text):
+        return "interaction_goal_setting"
+
+    if is_step10_active() and is_step8_or_step10_explanation_statement(text) and not is_direct_patient_question(text):
+        if st.session_state.get("intervention_explained", False):
+            return "intervention"
+        return "intervention_explanation"
+
+    # ------------------------------------------------------------
     # v37 핵심 수정: 병력·복용약 질문을 단계 잠금장치보다 먼저 처리한다.
     # - 아직 4단계 전/진행 중이면 history로 보내서 4단계 병력 사정으로 표시한다.
     # - 이미 4단계를 지난 뒤라면 context_history로 보내서 환자는 답하지만 현재 단계 라벨은 유지한다.
@@ -2561,10 +2589,12 @@ def classify_input(user_text: str) -> str:
         or st.session_state.get("order_shown", False)
         or st.session_state.get("intervention_done", False)
     )
-    if is_family_history_question(text):
+    direct_history_question_allowed = not (is_step8_active() or is_step10_active()) or is_direct_patient_question(text)
+
+    if direct_history_question_allowed and is_family_history_question(text):
         return "context_family_history" if past_history_step else "family_history"
 
-    if is_history_question(text):
+    if direct_history_question_allowed and is_history_question(text):
         return "context_history" if past_history_step else "history"
 
     # 초기 접촉/환자확인 분류
