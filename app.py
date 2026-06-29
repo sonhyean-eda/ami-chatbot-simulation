@@ -414,7 +414,7 @@ def get_current_step_label_for_chat() -> str:
     if not st.session_state.get("history_risk_done", False):
         return "4단계 병력·위험요인 사정"
     if not st.session_state.get("ami_judged", False):
-        return "5단계 AMI 판단·검사 필요성"
+        return "5단계 심혈관질환 판단·검사 필요성"
     if not st.session_state.get("exam_explained", False):
         return "6단계 검사 설명·참여 확인"
     if not st.session_state.get("labs_shown", False):
@@ -439,8 +439,8 @@ def get_step_label_for_category(category: str) -> str:
         "history_risk": "4단계 병력·위험요인 사정",
         "history": "4단계 병력·위험요인 사정",
         "family_history": "4단계 병력·위험요인 사정",
-        "judgment": "5단계 AMI 판단·검사 필요성",
-        "ami_judgment": "5단계 AMI 판단·검사 필요성",
+        "judgment": "5단계 심혈관질환 판단·검사 필요성",
+        "ami_judgment": "5단계 심혈관질환 판단·검사 필요성",
         "exam_explanation": "6단계 검사 설명·참여 확인",
         "labs": "7단계 검사결과 확인",
         "interaction_goal_setting": "8단계 문제·목표·방법 공유",
@@ -686,6 +686,13 @@ def is_ami_judgment_statement(text: str) -> bool:
         "급성심근경색", "급성 심근경색", "심근경색", "심근 경색",
         "심장마비", "심장 마비", "ami", "stemi",
         "acute myocardial infarction", "myocardial infarction", "heart attack",
+        "심장질환", "심장 질환",
+        "심장문제", "심장 문제",
+        "심장쪽 문제", "심장 쪽 문제",
+        "심장에 문제", "심장에 문제가",
+        "심혈관문제", "심혈관 문제",
+        "심혈관질환", "심혈관 질환",
+        "심장 관련 문제", "심장 관련 질환",
     ]
     disease_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in disease_terms]
 
