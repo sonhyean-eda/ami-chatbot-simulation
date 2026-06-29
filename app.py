@@ -1219,7 +1219,7 @@ def get_intervention_missing_items() -> List[str]:
         if not st.session_state.get("medication_pain_relief_explained", False):
             medication_missing.append("NTG/니트로글리세린 등 흉통 완화 약물의 목적")
         if not st.session_state.get("medication_clot_prevention_explained", False):
-            medication_missing.append("Aspirin/Plavix 등 혈전 예방 약물의 목적")
+            medication_missing.append("아스피린과 플라빅스 등 혈전 예방 약물의 목적")
         if medication_missing:
             missing.append("약물의 구체적 목적: " + ", ".join(medication_missing))
         else:
@@ -1248,7 +1248,7 @@ def get_intervention_hint_text() -> str:
         "중재 설명 단계에서 아직 빠진 핵심 항목이 있습니다. 정답 문장을 그대로 제시하지는 않으니, "
         "아래 항목을 참고해 자신의 말로 다시 설명해보세요.\n"
         f"{missing_text}\n"
-        "예: 산소는 숨쉬기와 심장 산소 공급을 돕고, NTG는 흉통 완화, Aspirin/Plavix는 혈전 예방에 도움이 됩니다. "
+        "예: 산소는 숨쉬기와 심장 산소 공급을 돕고, NTG는 흉통 완화, 아스피린과 플라빅스는 혈전 예방에 도움이 됩니다. "
         "어지러움·두통·출혈·통증 악화·불편감이 있으면 바로 말씀하거나 콜벨을 누르도록 안내한 뒤, "
         "설명한 중재를 진행해도 되는지 확인합니다."
     )
@@ -1263,7 +1263,7 @@ def get_intervention_patient_response_for_current_state(updates: List[str]) -> s
 
     if st.session_state.oxygen_explained and not st.session_state.medication_explained:
         if pain_med_done and not clot_med_done:
-            return "통증 완화에 도움이 되는 약은 이해했어요… 그런데 Aspirin이나 Plavix 같은 약은 왜 필요한지도 설명해 주세요."
+            return "통증 완화에 도움이 되는 약은 이해했어요… 그런데 아스피린이나 플라빅스 같은 약은 왜 필요한지도 설명해 주세요."
         if clot_med_done and not pain_med_done:
             return "혈전 예방 약은 이해했어요… 그런데 가슴 통증 완화를 위해 쓰는 약은 왜 필요한지도 설명해 주세요."
         return "산소가 숨쉬는 데 도움이 된다는 건 알겠어요… 그런데 약은 어떤 약이고 왜 필요한가요?"
