@@ -670,57 +670,71 @@ def safe_message(msg: Dict[str, str]) -> Dict[str, str]:
 
 
 def is_ami_judgment_statement(text: str) -> bool:
-    """AMI 가능성 판단 문장을 유연하게 인식한다.
+    """심근경색 또는 심장·심혈관 문제 가능성 판단 문장을 유연하게 인식한다.
 
-    기존에는 "급성심근경색 의심"처럼 정확한 띄어쓰기/조사 조합만 잘 잡혀서,
-    "급성심근경색이 의심됩니다", "급성 심근경색 의심",
-    "Acute myocardial infarction is suspected" 같은 자연스러운 표현이
-    general로 빠질 수 있었다.
-    이 함수는 공백을 제거한 compact text까지 함께 확인해
-    AMI 판단 단계가 올바르게 인식되도록 한다.
+    수정 목적
+    - '급성심근경색/AMI/STEMI'처럼 정확한 진단명뿐 아니라
+      '심장질환', '심장 문제', '심혈관 문제', 'heart disease',
+      'heart problem', 'cardiovascular problem', 'possible heart problem' 같은 표현도
+      5단계 판단·검사 필요성 인식으로 인정한다.
+    - 단, 너무 모호한 표현만으로 넘어가지 않도록 의심/가능성 표현 또는
+      심전도·혈액검사 필요성 표현이 함께 있을 때 인정한다.
     """
     raw = str(text or "").lower()
     compact = re.sub(r"\s+", "", raw)
 
     disease_terms = [
+        # 기존 AMI 관련 표현
         "급성심근경색", "급성 심근경색", "심근경색", "심근 경색",
         "심장마비", "심장 마비", "ami", "stemi",
         "acute myocardial infarction", "myocardial infarction", "heart attack",
-        "심장질환", "심장 질환",
-        "심장문제", "심장 문제",
-        "심장쪽 문제", "심장 쪽 문제",
-        "심장에 문제", "심장에 문제가",
-        "심혈관문제", "심혈관 문제",
-        "심혈관질환", "심혈관 질환",
-        "심장 관련 문제", "심장 관련 질환",
+
+        # 추가: 넓은 심장/심혈관 문제 표현
+        "심장질환", "심장 질환", "심질환",
+        "심장문제", "심장 문제", "심장쪽 문제", "심장 쪽 문제",
+        "심장에 문제", "심장에 문제가", "심장 이상", "심장 관련 문제", "심장 관련 질환",
+        "심혈관문제", "심혈관 문제", "심혈관질환", "심혈관 질환", "심혈관계 문제",
+        "심혈관계질환", "심혈관계 질환",
+
+        "heart disease", "heart problem", "heart problems", "heart issue", "heart issues",
+        "possible heart problem", "possible heart disease",
+        "cardiac problem", "cardiac problems", "cardiac issue", "cardiac issues", "cardiac disease",
+        "cardiovascular problem", "cardiovascular problems", "cardiovascular issue",
+        "cardiovascular issues", "cardiovascular disease",
     ]
     disease_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in disease_terms]
 
     suspicion_terms = [
         "의심", "가능성", "가능", "보입니다", "보여", "보여요",
-        "같습니다", "같아요", "생각", "추정",
+        "같습니다", "같아요", "생각", "추정", "우려",
         "suspect", "suspected", "suspicious", "possible", "likely",
         "is suspected", "seems", "appears", "concern", "concerned",
+        "may be", "might be", "could be",
     ]
     suspicion_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in suspicion_terms]
 
     test_terms = [
-        "심전도", "ecg", "ekg", "혈액검사", "혈액 검사", "피검사", "피 검사",
-        "심근효소", "심근 효소", "트로포닌", "troponin", "ck-mb", "ckmb",
-        "cardiac enzyme", "blood test", "blood work",
+        "심전도", "ecg", "ekg",
+        "혈액검사", "혈액 검사", "피검사", "피 검사",
+        "심근효소", "심근 효소", "트로포닌", "troponin",
+        "ck-mb", "ckmb", "cardiac enzyme", "blood test", "blood work",
     ]
     test_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in test_terms]
 
     need_terms = [
         "필요", "해야", "확인해야", "검사해야", "시행", "진행",
+        "확인", "검사", "파악",
         "need", "needed", "necessary", "should", "must", "required",
+        "confirm", "check", "verify",
     ]
     need_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in need_terms]
 
     current_symptom_terms = [
         "현재증상", "현재 증상", "증상으로", "자료를종합", "자료를 종합",
-        "흉통", "가슴통증", "호흡곤란", "식은땀", "방사통",
-        "current symptoms", "symptoms", "chest pain", "shortness of breath",
+        "흉통", "가슴통증", "가슴 통증", "가슴답답", "가슴 답답",
+        "호흡곤란", "호흡 곤란", "식은땀", "방사통",
+        "current symptoms", "symptoms", "chest pain", "chest discomfort",
+        "shortness of breath", "dyspnea",
     ]
     current_terms_compact = [re.sub(r"\s+", "", term.lower()) for term in current_symptom_terms]
 
@@ -731,16 +745,21 @@ def is_ami_judgment_statement(text: str) -> bool:
     has_current_context = any(term in compact for term in current_terms_compact)
 
     # 예: "현재 증상으로 급성심근경색이 의심됩니다."
+    # 예: "심장 문제일 가능성이 있습니다."
+    # 예: "It could be a heart problem."
     if has_disease and has_suspicion:
         return True
 
-    # 예: "현재 증상으로 심전도와 심근효소 검사가 필요합니다."
-    # 단순 검사 설명 문장과 구분하기 위해 '현재 증상/자료/흉통' 같은 판단 맥락을 함께 요구한다.
+    # 예: "심장 문제인지 확인하기 위해 심전도와 혈액검사가 필요합니다."
+    # 예: "We need ECG and blood tests to check for a possible heart problem."
+    if has_disease and has_test and has_need:
+        return True
+
+    # 예: "현재 흉통과 호흡곤란이 있어 심전도와 혈액검사가 필요합니다."
     if has_current_context and has_test and has_need:
         return True
 
     return False
-
 
 def is_labs_transition_expression(text: str) -> bool:
     """검사 설명 완료 후 검사결과 확인 단계로 넘어가는 표현을 폭넓게 인식한다.
@@ -1645,9 +1664,9 @@ STEP_HELP: Dict[str, Tuple[str, str]] = {
         "과거력, 복용약, 가족력 등 위험요인을 확인합니다.",
         "고혈압·복용약·흡연·가족력·알레르기·항응고제/항혈소판제·출혈성 질환 확인"
     ),
-    "5. 판단: AMI 의심 상황 판단 및 검사 필요성 인식": (
-        "수집한 자료를 바탕으로 심근경색 가능성을 말합니다.",
-        "AMI 의심 또는 심전도·혈액검사 필요성 언급"
+    "5. 판단: 심혈관질환 의심 상황 판단 및 검사 필요성 인식": (
+        "수집한 증상, 활력징후, 위험요인을 바탕으로 심근경색 또는 심장·심혈관 문제 가능성을 판단하고, 심전도와 혈액검사가 필요함을 설명합니다.",
+        "AMI/심근경색 의심, 심장질환·심장 문제·심혈관 문제 가능성 언급 + 심전도 및 혈액검사 필요성 인식"
     ),
     "6. 행위/반응: 검사 필요성 설명 및 환자의 이해·참여 확인": (
         "심전도와 혈액검사가 왜 필요한지 쉽게 설명합니다.",
@@ -2377,9 +2396,9 @@ def classify_input(user_text: str) -> str:
     if st.session_state.get("ami_judged", False) and not st.session_state.get("exam_explained", False):
         return "exam_explanation"
 
-    # AMI 가능성 판단
-    # 자연스러운 표현(예: "급성심근경색이 의심됩니다", "급성 심근경색 의심",
-    # "Acute myocardial infarction is suspected")도 잡기 위해 보강 함수 사용.
+    # 심근경색 또는 심장·심혈관 문제 가능성 판단
+    # 자연스러운 표현(예: "급성심근경색이 의심됩니다", "심장 문제일 가능성이 있습니다",
+    # "It could be a heart problem")도 잡기 위해 보강 함수 사용.
     if is_ami_judgment_statement(text):
         return "ami_judgment"
 
@@ -2657,12 +2676,12 @@ def get_response(user_text: str) -> List[Dict[str, str]]:
 
     elif category == "ami_judgment":
         st.session_state.ami_judged = True
-        mark_checklist("5. 판단: AMI 의심 상황 판단 및 검사 필요성 인식")
+        mark_checklist("5. 판단: 심혈관질환 의심 상황 판단 및 검사 필요성 인식")
         responses.append(patient_message(
             "심장 문제일 수도 있다는 건가요…? 너무 무서워요. 그래도 정확히 확인하려면 심전도랑 피검사를 해야 한다는 말씀이시죠?"
         ))
         responses.append(system_message(
-            "AMI 가능성 인식이 확인되었습니다. 심전도와 혈액검사의 필요성을 환자에게 설명하고 협조를 구하세요."
+            "심근경색 또는 심혈관질환 가능성 인식이 확인되었습니다. 심전도와 혈액검사의 필요성을 환자에게 설명하고 협조를 구하세요."
         ))
 
     elif category == "exam_explanation":
